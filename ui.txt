@@ -1,0 +1,479 @@
+//prompt-
+here is my iptv app thru react native overview-i want to create a iptv app using react native when the user opens the app he first see the splash screen and than two option simple ui or advanced ui where simple ui is pre selected and after 5 seconds it redirects to the selected ui in the simple ui the iptv is like the classic tv means dishtv ui means at background the starting channel palying like channel no 100 and at right side there is a box containing keypad to go to a particular page and at left side a box containg all channel list with boxes like categories and language and below to that list of all  channel showing 10 at once and left and right of the list there are < and > button which moves the list 10 channel forward and backward and after 5 second the all channel box and keypad box disappear and channel playing and i the advanced ui there is only at whole screen a all channels listed in a box with image icon and name and have above category and languages change option and here is its prototype code of the above prompt as pasted i already setuped the react native project and also changed android manifast to lean .i want you to create a folder structure of this project and create a script that make that folder structure like components ,screens etc in the project with their blank files  and the app fetch the channel list with their details and play url from a m3u8 file or url add their folder and blank files also and a folder for sending meaasge if any error in the app with its blank files
+
+//prottype code-
+
+
+import React, { useState, useEffect } from 'react';
+import { ChevronLeft, ChevronRight, Grid, Tv, Home, Search, Star, Clock, Settings } from 'lucide-react';
+
+export default function IPTVAppDesign() {
+  const [currentScreen, setCurrentScreen] = useState('splash');
+  const [selectedUI, setSelectedUI] = useState('simple');
+  const [countdown, setCountdown] = useState(5);
+  const [showControls, setShowControls] = useState(true);
+  const [currentChannel, setCurrentChannel] = useState(100);
+  const [channelPage, setChannelPage] = useState(0);
+  const [selectedCategory, setSelectedCategory] = useState('All');
+  const [selectedLanguage, setSelectedLanguage] = useState('All');
+  const [keypadInput, setKeypadInput] = useState('');
+
+  const categories = ['All', 'Entertainment', 'News', 'Sports', 'Movies', 'Kids', 'Music', 'Documentary'];
+  const languages = ['All', 'English', 'Hindi', 'Tamil', 'Telugu', 'Kannada', 'Malayalam'];
+  
+  const channels = Array.from({ length: 80 }, (_, i) => ({
+    number: 100 + i,
+    name: `Channel ${100 + i}`,
+    category: categories[Math.floor(Math.random() * (categories.length - 1)) + 1],
+    language: languages[Math.floor(Math.random() * (languages.length - 1)) + 1],
+    image: `https://via.placeholder.com/120x80/667/fff?text=CH${100 + i}`,
+    isHD: Math.random() > 0.5,
+    isFavorite: Math.random() > 0.7
+  }));
+
+  const filteredChannels = channels.filter(ch => 
+    (selectedCategory === 'All' || ch.category === selectedCategory) &&
+    (selectedLanguage === 'All' || ch.language === selectedLanguage)
+  );
+
+  const displayedChannels = filteredChannels.slice(channelPage * 10, (channelPage + 1) * 10);
+
+  useEffect(() => {
+    if (currentScreen === 'splash') {
+      const timer = setTimeout(() => setCurrentScreen('selection'), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [currentScreen]);
+
+  useEffect(() => {
+    if (currentScreen === 'selection' && countdown > 0) {
+      const timer = setTimeout(() => setCountdown(countdown - 1), 1000);
+      return () => clearTimeout(timer);
+    } else if (currentScreen === 'selection' && countdown === 0) {
+      setCurrentScreen(selectedUI === 'simple' ? 'simple' : 'advanced');
+    }
+  }, [currentScreen, countdown, selectedUI]);
+
+  useEffect(() => {
+    if (currentScreen === 'simple' && showControls) {
+      const timer = setTimeout(() => setShowControls(false), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [currentScreen, showControls]);
+
+  const handleChannelChange = (number) => {
+    setCurrentChannel(number);
+    setShowControls(true);
+    setKeypadInput('');
+  };
+
+  const handleKeypadPress = (key) => {
+    if (key === '⌫') {
+      setKeypadInput(keypadInput.slice(0, -1));
+    } else if (key === 'GO') {
+      const channelNum = parseInt(keypadInput);
+      if (channelNum >= 100 && channelNum < 180) {
+        handleChannelChange(channelNum);
+      }
+      setKeypadInput('');
+    } else {
+      if (keypadInput.length < 3) {
+        setKeypadInput(keypadInput + key);
+      }
+    }
+  };
+
+  // Splash Screen
+  if (currentScreen === 'splash') {
+    return (
+      <div className="h-screen w-full bg-gradient-to-br from-indigo-950 via-purple-950 to-pink-950 flex items-center justify-center relative overflow-hidden">
+        <div className="absolute inset-0 opacity-20">
+          <div className="absolute top-20 left-20 w-72 h-72 bg-blue-500 rounded-full blur-3xl animate-pulse"></div>
+          <div className="absolute bottom-20 right-20 w-96 h-96 bg-purple-500 rounded-full blur-3xl animate-pulse"></div>
+        </div>
+        <div className="text-center z-10">
+          <div className="relative mb-8">
+            <Tv className="w-40 h-40 text-white mx-auto animate-pulse" />
+            <div className="absolute inset-0 bg-blue-400 blur-2xl opacity-50 animate-pulse"></div>
+          </div>
+          <h1 className="text-7xl font-black text-white mb-4 tracking-wider">StreamTV</h1>
+          <div className="h-1 w-64 bg-gradient-to-r from-transparent via-blue-400 to-transparent mx-auto mb-4"></div>
+          <p className="text-2xl text-blue-200 font-light">Premium IPTV Experience</p>
+        </div>
+      </div>
+    );
+  }
+
+  // UI Selection Screen
+  if (currentScreen === 'selection') {
+    return (
+      <div className="h-screen w-full bg-gradient-to-br from-gray-950 via-gray-900 to-black flex items-center justify-center p-8 relative overflow-hidden">
+        <div className="absolute inset-0 opacity-10">
+          <div className="absolute top-0 left-0 w-full h-full" style={{
+            backgroundImage: 'radial-gradient(circle at 2px 2px, rgba(255,255,255,0.15) 1px, transparent 0)',
+            backgroundSize: '40px 40px'
+          }}></div>
+        </div>
+        
+        <div className="max-w-5xl w-full z-10">
+          <h2 className="text-5xl font-black text-white text-center mb-4 bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+            Choose Your Experience
+          </h2>
+          <p className="text-gray-400 text-center mb-16 text-lg">Select the interface that suits you best</p>
+          
+          <div className="grid grid-cols-2 gap-12 mb-12">
+            <div
+              onClick={() => {setSelectedUI('simple'); setCountdown(5);}}
+              className={`group p-10 rounded-3xl cursor-pointer transition-all transform hover:scale-105 relative overflow-hidden ${
+                selectedUI === 'simple'
+                  ? 'bg-gradient-to-br from-blue-600 to-blue-800 shadow-2xl shadow-blue-500/50'
+                  : 'bg-gradient-to-br from-gray-800 to-gray-900 hover:from-gray-700 hover:to-gray-800'
+              }`}
+            >
+              <div className="absolute top-0 right-0 w-40 h-40 bg-white opacity-5 rounded-full blur-3xl"></div>
+              <Tv className="w-24 h-24 text-white mx-auto mb-6 group-hover:scale-110 transition-transform" />
+              <h3 className="text-3xl font-bold text-white text-center mb-4">Simple UI</h3>
+              <p className="text-gray-200 text-center leading-relaxed">Classic TV experience like DishTV with instant channel switching and numeric keypad</p>
+              {selectedUI === 'simple' && (
+                <div className="absolute top-4 right-4 w-6 h-6 bg-white rounded-full flex items-center justify-center">
+                  <div className="w-3 h-3 bg-blue-600 rounded-full"></div>
+                </div>
+              )}
+            </div>
+
+            <div
+              onClick={() => {setSelectedUI('advanced'); setCountdown(5);}}
+              className={`group p-10 rounded-3xl cursor-pointer transition-all transform hover:scale-105 relative overflow-hidden ${
+                selectedUI === 'advanced'
+                  ? 'bg-gradient-to-br from-purple-600 to-purple-800 shadow-2xl shadow-purple-500/50'
+                  : 'bg-gradient-to-br from-gray-800 to-gray-900 hover:from-gray-700 hover:to-gray-800'
+              }`}
+            >
+              <div className="absolute top-0 right-0 w-40 h-40 bg-white opacity-5 rounded-full blur-3xl"></div>
+              <Grid className="w-24 h-24 text-white mx-auto mb-6 group-hover:scale-110 transition-transform" />
+              <h3 className="text-3xl font-bold text-white text-center mb-4">Advanced UI</h3>
+              <p className="text-gray-200 text-center leading-relaxed">Modern grid interface with visual thumbnails for easy browsing and discovery</p>
+              {selectedUI === 'advanced' && (
+                <div className="absolute top-4 right-4 w-6 h-6 bg-white rounded-full flex items-center justify-center">
+                  <div className="w-3 h-3 bg-purple-600 rounded-full"></div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="text-center">
+            <div className="inline-block bg-gray-800/50 backdrop-blur px-8 py-4 rounded-2xl border border-gray-700">
+              <p className="text-3xl text-white font-bold mb-1">Redirecting in {countdown}s</p>
+              <p className="text-gray-400">Click to change selection</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Simple UI Mode
+  if (currentScreen === 'simple') {
+    return (
+      <div 
+        className="h-screen w-full bg-black relative overflow-hidden"
+        onClick={() => setShowControls(true)}
+      >
+        {/* Background Video Player */}
+        <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-gray-950 via-black to-gray-950">
+          <div className="text-center">
+            <div className="relative mb-6">
+              <Tv className="w-40 h-40 text-gray-700 mx-auto" />
+              <div className="absolute inset-0 bg-blue-600 blur-3xl opacity-20"></div>
+            </div>
+            <p className="text-6xl text-white font-black mb-2">Channel {currentChannel}</p>
+            <p className="text-2xl text-gray-400 font-light">{channels.find(ch => ch.number === currentChannel)?.name}</p>
+            <div className="flex items-center justify-center gap-3 mt-6">
+              {channels.find(ch => ch.number === currentChannel)?.isHD && (
+                <span className="bg-blue-600 text-white px-3 py-1 rounded-full text-sm font-bold">HD</span>
+              )}
+              <span className="bg-gray-800 text-gray-300 px-3 py-1 rounded-full text-sm">
+                {channels.find(ch => ch.number === currentChannel)?.category}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Overlay Controls */}
+        <div className={`absolute inset-0 transition-opacity duration-500 ${showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+          {/* Top Bar */}
+          <div className="absolute top-0 left-0 right-0 bg-gradient-to-b from-black via-black/80 to-transparent p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-2 rounded-lg">
+                  <Home className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <span className="text-2xl font-black text-white">StreamTV</span>
+                  <p className="text-xs text-gray-400">Simple Mode</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-6">
+                <div className="text-right">
+                  <p className="text-white font-bold text-lg">CH {currentChannel}</p>
+                  <p className="text-gray-400 text-sm">{channels.find(ch => ch.number === currentChannel)?.name}</p>
+                </div>
+                <button 
+                  onClick={(e) => {e.stopPropagation(); setCurrentScreen('selection');}}
+                  className="bg-gray-800/80 hover:bg-gray-700 p-2 rounded-lg backdrop-blur transition-all"
+                >
+                  <Settings className="w-5 h-5 text-white" />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Channel List - Left Side */}
+          <div className="absolute left-4 top-20 bottom-4 w-80 bg-black/60 backdrop-blur-xl rounded-2xl border border-gray-800 overflow-hidden flex flex-col">
+            <div className="p-4 bg-gradient-to-r from-blue-600/20 to-purple-600/20 border-b border-gray-800">
+              <h3 className="text-white text-lg font-bold mb-3 flex items-center gap-2">
+                <Tv className="w-5 h-5" />
+                All Channels
+              </h3>
+              
+              {/* Filters */}
+              <div className="space-y-2">
+                <select 
+                  value={selectedCategory}
+                  onChange={(e) => {setSelectedCategory(e.target.value); setChannelPage(0);}}
+                  className="w-full bg-gray-900/80 text-white text-sm rounded-lg p-2 border border-gray-700 focus:border-blue-500 outline-none"
+                >
+                  {categories.map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+                <select 
+                  value={selectedLanguage}
+                  onChange={(e) => {setSelectedLanguage(e.target.value); setChannelPage(0);}}
+                  className="w-full bg-gray-900/80 text-white text-sm rounded-lg p-2 border border-gray-700 focus:border-blue-500 outline-none"
+                >
+                  {languages.map(lang => (
+                    <option key={lang} value={lang}>{lang}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Channel List */}
+            <div className="flex-1 overflow-hidden p-3">
+              <div className="space-y-1.5">
+                {displayedChannels.map(channel => (
+                  <div
+                    key={channel.number}
+                    onClick={(e) => {e.stopPropagation(); handleChannelChange(channel.number);}}
+                    className={`p-2.5 rounded-lg cursor-pointer transition-all ${
+                      currentChannel === channel.number
+                        ? 'bg-gradient-to-r from-blue-600 to-blue-700 shadow-lg'
+                        : 'bg-gray-800/50 hover:bg-gray-700/50'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                        <span className={`font-bold text-sm ${currentChannel === channel.number ? 'text-white' : 'text-blue-400'}`}>
+                          {channel.number}
+                        </span>
+                        <span className="text-white text-sm truncate">{channel.name}</span>
+                        {channel.isFavorite && <Star className="w-3 h-3 text-yellow-400 fill-yellow-400" />}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        {channel.isHD && (
+                          <span className="text-[10px] bg-blue-500 text-white px-1.5 py-0.5 rounded font-bold">HD</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Pagination */}
+            <div className="p-3 bg-gray-900/80 border-t border-gray-800 flex items-center justify-between">
+              <button
+                onClick={(e) => {e.stopPropagation(); setChannelPage(Math.max(0, channelPage - 1));}}
+                disabled={channelPage === 0}
+                className="p-2 bg-gray-800 rounded-lg disabled:opacity-30 hover:bg-gray-700 transition-all disabled:cursor-not-allowed"
+              >
+                <ChevronLeft className="w-4 h-4 text-white" />
+              </button>
+              <span className="text-gray-400 text-sm font-medium">
+                {channelPage * 10 + 1}-{Math.min((channelPage + 1) * 10, filteredChannels.length)} of {filteredChannels.length}
+              </span>
+              <button
+                onClick={(e) => {e.stopPropagation(); setChannelPage(Math.min(Math.ceil(filteredChannels.length / 10) - 1, channelPage + 1));}}
+                disabled={channelPage >= Math.ceil(filteredChannels.length / 10) - 1}
+                className="p-2 bg-gray-800 rounded-lg disabled:opacity-30 hover:bg-gray-700 transition-all disabled:cursor-not-allowed"
+              >
+                <ChevronRight className="w-4 h-4 text-white" />
+              </button>
+            </div>
+          </div>
+
+          {/* Keypad - Right Side */}
+          <div className="absolute right-4 top-20 w-56 bg-black/40 backdrop-blur-xl rounded-2xl border border-gray-800 overflow-hidden">
+            <div className="p-3 bg-gradient-to-r from-purple-600/20 to-pink-600/20 border-b border-gray-800">
+              <h3 className="text-white text-sm font-bold flex items-center gap-2">
+                <Search className="w-4 h-4" />
+                Quick Jump
+              </h3>
+            </div>
+            <div className="p-3">
+              <div className="bg-gray-900/80 rounded-lg p-3 mb-3 text-center border border-gray-700">
+                <p className="text-2xl text-white font-bold tracking-wider">
+                  {keypadInput || '---'}
+                </p>
+              </div>
+              <div className="grid grid-cols-3 gap-2 mb-2">
+                {[1,2,3,4,5,6,7,8,9,'⌫',0,'GO'].map((key, idx) => (
+                  <button
+                    key={idx}
+                    onClick={(e) => {e.stopPropagation(); handleKeypadPress(key.toString());}}
+                    className={`text-white font-bold py-2.5 rounded-lg transition-all text-lg ${
+                      key === 'GO' 
+                        ? 'bg-gradient-to-r from-green-600 to-green-700 hover:from-green-500 hover:to-green-600 col-span-1' 
+                        : key === '⌫'
+                        ? 'bg-red-600/80 hover:bg-red-600'
+                        : 'bg-gray-800/80 hover:bg-gray-700'
+                    }`}
+                  >
+                    {key}
+                  </button>
+                ))}
+              </div>
+              <p className="text-gray-500 text-[10px] text-center">Enter channel number</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Advanced UI Mode
+  if (currentScreen === 'advanced') {
+    return (
+      <div className="h-screen w-full bg-gradient-to-br from-gray-950 via-gray-900 to-black overflow-y-auto">
+        {/* Header */}
+        <div className="bg-black/80 backdrop-blur-xl border-b border-gray-800 p-4 sticky top-0 z-20">
+          <div className="max-w-screen-2xl mx-auto">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-4">
+                <div className="bg-gradient-to-r from-purple-600 to-pink-600 p-2.5 rounded-xl">
+                  <Grid className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <span className="text-2xl font-black text-white">StreamTV</span>
+                  <p className="text-xs text-gray-400">Advanced Mode</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="bg-gray-800/50 px-4 py-2 rounded-lg border border-gray-700">
+                  <p className="text-sm text-gray-400">Total Channels</p>
+                  <p className="text-xl text-white font-bold">{filteredChannels.length}</p>
+                </div>
+                <button
+                  onClick={() => {setCurrentScreen('selection'); setCountdown(5);}}
+                  className="bg-gray-800 hover:bg-gray-700 text-white px-4 py-2.5 rounded-lg flex items-center gap-2 transition-all border border-gray-700"
+                >
+                  <Settings className="w-4 h-4" />
+                  <span className="text-sm font-medium">Settings</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Filters */}
+            <div className="flex gap-3">
+              <div className="flex-1">
+                <select 
+                  value={selectedCategory}
+                  onChange={(e) => {setSelectedCategory(e.target.value); setChannelPage(0);}}
+                  className="w-full bg-gray-800/80 text-white rounded-xl p-3 border border-gray-700 focus:border-purple-500 outline-none transition-all text-sm"
+                >
+                  <option value="" disabled>Category</option>
+                  {categories.map(cat => (
+                    <option key={cat} value={cat}>📺 {cat}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex-1">
+                <select 
+                  value={selectedLanguage}
+                  onChange={(e) => {setSelectedLanguage(e.target.value); setChannelPage(0);}}
+                  className="w-full bg-gray-800/80 text-white rounded-xl p-3 border border-gray-700 focus:border-purple-500 outline-none transition-all text-sm"
+                >
+                  <option value="" disabled>Language</option>
+                  {languages.map(lang => (
+                    <option key={lang} value={lang}>🌐 {lang}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Channel Grid */}
+        <div className="max-w-screen-2xl mx-auto p-6">
+          <div className="grid grid-cols-5 gap-4">
+            {filteredChannels.map(channel => (
+              <div
+                key={channel.number}
+                onClick={() => {
+                  setCurrentChannel(channel.number);
+                  setCurrentScreen('simple');
+                  setShowControls(true);
+                }}
+                className="group bg-gradient-to-br from-gray-800 to-gray-900 rounded-xl overflow-hidden cursor-pointer transition-all transform hover:scale-105 hover:shadow-2xl hover:shadow-purple-500/20 border border-gray-800 hover:border-purple-500/50"
+              >
+                <div className="relative">
+                  <img 
+                    src={channel.image} 
+                    alt={channel.name}
+                    className="w-full h-24 object-cover"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                  {channel.isFavorite && (
+                    <div className="absolute top-2 right-2 bg-yellow-500 rounded-full p-1">
+                      <Star className="w-3 h-3 text-white fill-white" />
+                    </div>
+                  )}
+                  <div className="absolute bottom-2 left-2 flex gap-1">
+                    {channel.isHD && (
+                      <span className="text-[10px] bg-blue-600 text-white px-2 py-0.5 rounded-full font-bold">HD</span>
+                    )}
+                  </div>
+                </div>
+                <div className="p-3">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-purple-400 font-bold text-sm">CH {channel.number}</span>
+                  </div>
+                  <p className="text-white font-semibold text-sm mb-2 truncate group-hover:text-purple-300 transition-colors">
+                    {channel.name}
+                  </p>
+                  <div className="flex gap-1.5 flex-wrap">
+                    <span className="bg-gray-700/50 text-gray-300 px-2 py-0.5 rounded text-[10px] border border-gray-600">
+                      {channel.category}
+                    </span>
+                    <span className="bg-gray-700/50 text-gray-300 px-2 py-0.5 rounded text-[10px] border border-gray-600">
+                      {channel.language}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {filteredChannels.length === 0 && (
+            <div className="text-center py-20">
+              <Search className="w-20 h-20 text-gray-700 mx-auto mb-4" />
+              <p className="text-2xl text-gray-500 font-bold">No channels found</p>
+              <p className="text-gray-600 mt-2">Try adjusting your filters</p>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+}
