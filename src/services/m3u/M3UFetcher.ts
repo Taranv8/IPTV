@@ -1,7 +1,7 @@
 import axios from 'axios';
 import RNFS from 'react-native-fs';
 import { APP_CONFIG } from '../../constants/config';
-
+import { Platform } from 'react-native';
 export class M3UFetcher {
   /**
    * Fetch M3U from configured source (URL or local file)
@@ -63,55 +63,62 @@ export class M3UFetcher {
   /**
    * Fetch M3U from a local file
    */
-  static async fetchFromLocalFile(filePath: string): Promise<string> {
-    try {
-      let resolvedPath = filePath;
+ static async fetchFromLocalFile(filePath: string): Promise<string> {
+  try {
+    let resolvedPath = filePath;
 
-      // Handle different path formats
-      if (filePath.startsWith('file://')) {
-        resolvedPath = filePath.replace('file://', '');
-      }
+    if (filePath.startsWith('file://')) {
+      resolvedPath = filePath.replace('file://', '');
+    }
 
-      // If path is relative, resolve it from assets or documents directory
-      if (!resolvedPath.startsWith('/')) {
-        // Try assets folder first (for bundled files)
-        const assetPath = `${RNFS.MainBundlePath}/${resolvedPath}`;
-        const assetExists = await RNFS.exists(assetPath);
-        
-        if (assetExists) {
-          resolvedPath = assetPath;
-        } else {
-          // Try document directory
-          resolvedPath = `${RNFS.DocumentDirectoryPath}/${resolvedPath}`;
+    if (!resolvedPath.startsWith('/')) {
+      // ✅ Android: use readFileAssets
+      if (Platform.OS === 'android') {
+        try {
+          const content = await RNFS.readFileAssets(resolvedPath, 'utf8');
+          if (!content || content.trim() === '') {
+            throw new Error('M3U file is empty');
+          }
+          return content;
+        } catch (e) {
+          throw new Error(`Asset not found on Android: ${resolvedPath}`);
         }
       }
 
-      // Check if file exists
-      const fileExists = await RNFS.exists(resolvedPath);
-      if (!fileExists) {
-        throw new Error(`M3U file not found at: ${resolvedPath}`);
+      // iOS: use MainBundlePath
+      const assetPath = `${RNFS.MainBundlePath}/${resolvedPath}`;
+      const assetExists = await RNFS.exists(assetPath);
+      if (assetExists) {
+        resolvedPath = assetPath;
+      } else {
+        resolvedPath = `${RNFS.DocumentDirectoryPath}/${resolvedPath}`;
       }
-
-      // Read file content
-      const content = await RNFS.readFile(resolvedPath, 'utf8');
-      
-      if (!content || content.trim() === '') {
-        throw new Error('M3U file is empty');
-      }
-
-      // Validate M3U format
-      if (!content.trim().startsWith('#EXTM3U')) {
-        throw new Error('Invalid M3U file format. File must start with #EXTM3U');
-      }
-
-      return content;
-    } catch (error) {
-      if (error instanceof Error) {
-        throw new Error(`Failed to read local M3U file: ${error.message}`);
-      }
-      throw error;
     }
+
+    const fileExists = await RNFS.exists(resolvedPath);
+    if (!fileExists) {
+      throw new Error(`M3U file not found at: ${resolvedPath}`);
+    }
+
+    const content = await RNFS.readFile(resolvedPath, 'utf8');
+
+    if (!content || content.trim() === '') {
+      throw new Error('M3U file is empty');
+    }
+
+    // ✅ Warn instead of throwing
+    if (!content.trim().startsWith('#EXTM3U')) {
+      console.warn('M3U missing #EXTM3U header, attempting to parse anyway');
+    }
+
+    return content;
+  } catch (error) {
+    if (error instanceof Error) {
+      throw new Error(`Failed to read local M3U file: ${error.message}`);
+    }
+    throw error;
   }
+}
 
   /**
    * Read M3U from app's assets folder (Android)
