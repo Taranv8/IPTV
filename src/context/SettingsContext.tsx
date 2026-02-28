@@ -21,7 +21,7 @@ export const SettingsProvider = ({ children }: { children: ReactNode }) => {
 
   const loadSettings = async () => {
     try {
-      const savedMode = await AsyncStorage.getItem(STORAGE_KEYS.UI_MODE);
+      const savedMode = await AsyncStorage.getItem(STORAGE_KEYS.SELECTED_UI);
       if (savedMode) {
         setUIModeState(savedMode as 'simple' | 'advanced');
       }
@@ -32,7 +32,7 @@ export const SettingsProvider = ({ children }: { children: ReactNode }) => {
 
   const setUIMode = async (mode: 'simple' | 'advanced') => {
     try {
-      await AsyncStorage.setItem(STORAGE_KEYS.UI_MODE, mode);
+      await AsyncStorage.setItem(STORAGE_KEYS.SELECTED_UI, mode);
       setUIModeState(mode);
     } catch (error) {
       console.error('Error saving UI mode:', error);

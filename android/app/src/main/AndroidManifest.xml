@@ -2,7 +2,8 @@
 
     <!-- Internet permission -->
     <uses-permission android:name="android.permission.INTERNET" />
-
+<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
     <!-- Android TV / Google TV -->
     <uses-feature
         android:name="android.software.leanback"
@@ -21,7 +22,8 @@
         android:allowBackup="false"
         android:theme="@style/AppTheme"
         android:usesCleartextTraffic="true"
-        android:supportsRtl="true">
+        android:supportsRtl="true"
+        android:requestLegacyExternalStorage="true">
 
         <activity
             android:name=".MainActivity"

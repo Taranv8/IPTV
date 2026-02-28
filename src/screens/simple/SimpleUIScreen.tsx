@@ -74,7 +74,7 @@ const SimpleUIScreen: React.FC<Props> = ({ navigation }) => {
               </View>
               <View>
                 <Text style={styles.appName}>{APP_CONFIG.APP_NAME}</Text>
-                <Text style={styles.modeName}>Simple Mode</Text>
+                <Text style={styles.modeName}>Simple-Mode</Text>
               </View>
             </View>
 
