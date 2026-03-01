@@ -26,7 +26,7 @@ export class M3UParser {
       } else if (line.startsWith('http')) {
         // This is the stream URL
         if (currentChannel.name) {
-          currentChannel.url = line;
+currentChannel.url = line.trim().replace(/[\r\n\t ]+$/, '');
           channels.push(currentChannel as Channel);
           currentChannel = {};
         }
