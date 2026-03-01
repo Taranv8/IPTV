@@ -7,7 +7,7 @@
  *
  * Examples:
  *   node extract_m3u8.js https://kliv.fun/NFus6
- *   node extract_m3u8.js https://kliv.fun/NFus6 out.m3u8  --format=m3u8
+ *   node extract_m3u8.js https://df6d.short.gy/tpv2scf.m3u out.m3u8  --format=m3u8
  *   node extract_m3u8.js https://kliv.fun/NFus6 out.json  --format=json
  *   node extract_m3u8.js https://kliv.fun/NFus6 out.csv   --format=csv
  *   DEBUG=1 node extract_m3u8.js https://kliv.fun/NFus6   <- dumps raw response

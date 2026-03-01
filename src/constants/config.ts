@@ -1,35 +1,20 @@
-export const APP_CONFIG = {
-  // M3U Source Configuration
-  // You can use:
-  // 1. URL: 'https://example.com/playlist.m3u8'
-  // 2. Local file in assets: 'channels.m3u8' or 'assets/channels.m3u8'
-  // 3. Absolute path: '/storage/emulated/0/Download/playlist.m3u8'
-  // 4. File URI: 'file:///path/to/playlist.m3u8'
+// constants/config.ts
 
+export const APP_CONFIG = {
   APP_NAME: 'IPTV Player',
-  M3U_URL: 'channels.m3u8', // Local file in assets by default
-  
-  // Fallback URL if local file fails
+  M3U_URL: 'channels.m3u8',
   FALLBACK_M3U_URL: 'https://iptv-org.github.io/iptv/index.m3u',
-  
-  // App Configuration
   DEFAULT_CHANNEL: 100,
   SPLASH_DURATION: 3000,
   UI_SELECTION_COUNTDOWN: 5,
   CONTROLS_HIDE_DELAY: 5000,
   CHANNELS_PER_PAGE: 10,
-  
-  // Cache Configuration
-  M3U_REFRESH_INTERVAL: 24 * 60 * 60 * 1000, // 24 hours
+  M3U_REFRESH_INTERVAL: 24 * 60 * 60 * 1000,
   ENABLE_CACHE: true,
-  MAX_CACHE_AGE: 7 * 24 * 60 * 60 * 1000, // 7 days
-  
-  // Network Configuration
+  MAX_CACHE_AGE: 7 * 24 * 60 * 60 * 1000,
   REQUEST_TIMEOUT: 30000,
   MAX_RETRIES: 3,
   RETRY_DELAY: 2000,
-  
-  // Player Configuration
   PLAYER_BUFFER_SIZE: 5000,
   AUTO_PLAY: true,
   RESUME_ON_FOCUS: true,
@@ -53,4 +38,17 @@ export const ERROR_MESSAGES = {
   EMPTY_PLAYLIST: 'No channels found in playlist.',
   LOAD_FAILED: 'Failed to load channels. Please try again.',
   STREAM_ERROR: 'Failed to play stream. Channel may be offline.',
+};
+
+// ✅ THIS WAS MISSING — ErrorReporter imports this but it was never defined
+export const ERROR_REPORTING = {
+  // Set to true to enable remote error reporting
+  ENABLED: false,
+
+  // Replace with your error reporting endpoint when ready
+  // e.g. 'https://your-api.com/errors' or a Sentry/Datadog ingest URL
+  API_ENDPOINT: 'https://your-error-reporting-endpoint.com/api/errors',
+
+  // Request timeout for error reports (ms)
+  TIMEOUT: 5000,
 };

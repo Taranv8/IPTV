@@ -1,3 +1,4 @@
+// services/error/ErrorReporter.ts
 import axios from 'axios';
 import { ERROR_REPORTING } from '../../constants/config';
 import DeviceInfo from 'react-native-device-info';
@@ -16,7 +17,8 @@ interface ErrorReport {
 
 export class ErrorReporter {
   static async report(error: Error, errorType: string, additionalInfo?: any): Promise<void> {
-    if (!ERROR_REPORTING.ENABLED) return;
+    // ✅ Guard against ERROR_REPORTING being undefined (e.g. missing from config)
+    if (!ERROR_REPORTING?.ENABLED) return;
 
     try {
       const errorReport: ErrorReport = {
@@ -38,7 +40,8 @@ export class ErrorReporter {
         },
       });
     } catch (err) {
-      console.error('Failed to report error:', err);
+      // Never let error reporting crash the app
+      console.warn('[ErrorReporter] Failed to send report:', err);
     }
   }
 }
