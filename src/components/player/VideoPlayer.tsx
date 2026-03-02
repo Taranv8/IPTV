@@ -45,7 +45,7 @@ const VideoPlayer: React.FC<Props> = ({ channel }) => {
 
     (async () => {
       try {
-        const resolved = await StreamResolver.resolve(channel.url);
+const resolved = await StreamResolver.resolve(channel.streamUrl);
         if (!cancelled) {
           console.log(`[VideoPlayer] Playing ${resolved.type} stream:`, resolved.url);
           setStream(resolved);
@@ -60,7 +60,7 @@ const VideoPlayer: React.FC<Props> = ({ channel }) => {
     })();
 
     return () => { cancelled = true; };
-  }, [channel.url]);
+  }, [channel.streamUrl]);
 
   // ─── Video event handlers ─────────────────────────────────────────────────────
   const handleLoadStart = () => {
@@ -84,10 +84,10 @@ const VideoPlayer: React.FC<Props> = ({ channel }) => {
     console.error('[VideoPlayer] Playback error:', exoError, exoMsg);
 
     // Auto-retry once: fall back to original URL with m3u8 assumption
-    if (retryCount === 0 && stream?.url !== channel.url) {
+    if (retryCount === 0 && stream?.url !== channel.streamUrl) {
       console.warn('[VideoPlayer] Retrying with original URL as m3u8');
       setRetryCount(1);
-      setStream({ url: channel.url, type: 'm3u8' });
+setStream({ url: channel.streamUrl, type: 'm3u8' });
       setIsLoading(true);
       return;
     }
@@ -96,7 +96,7 @@ const VideoPlayer: React.FC<Props> = ({ channel }) => {
     if (retryCount === 1 && stream?.type === 'm3u8') {
       console.warn('[VideoPlayer] Retrying as DASH/MPD');
       setRetryCount(2);
-      setStream({ url: channel.url, type: 'mpd' });
+setStream({ url: channel.streamUrl, type: 'mpd' });
       setIsLoading(true);
       return;
     }
@@ -105,7 +105,7 @@ const VideoPlayer: React.FC<Props> = ({ channel }) => {
     safeReport('Video playback error', 'PLAYBACK_ERROR', {
       channelNumber: channel.number,
       channelName: channel.name,
-      originalUrl: channel.url,
+      originalUrl: channel.streamUrl,
       resolvedUrl: stream?.url,
       resolvedType: stream?.type,
       exoError,
@@ -120,7 +120,7 @@ const VideoPlayer: React.FC<Props> = ({ channel }) => {
     setIsLoading(true);
     setRetryCount(0);
     try {
-      const resolved = await StreamResolver.resolve(channel.url);
+      const resolved = await StreamResolver.resolve(channel.streamUrl);
       setStream(resolved);
     } catch {
       setError('Failed to resolve stream URL');

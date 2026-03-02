@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * M3U8 Playlist Extractor — with Channel Name & Logo
+ * M3U8 Playlist Extractor — 
  * Usage:
  *   node extract_m3u8.js <url> [output_file] [--format=txt|m3u8|json|csv]
  *

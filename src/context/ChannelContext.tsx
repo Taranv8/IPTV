@@ -1,95 +1,93 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Channel, ChannelFilter } from '../types/channel';
-import { useM3U } from '../hooks/useM3U';
-import { CATEGORIES, LANGUAGES } from '../constants/channels';
+import { useChannels } from '../hooks/useChannels';
+import { getGroupsFromChannels } from '../constants/channels';
 import { APP_CONFIG, STORAGE_KEYS } from '../constants/config';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface ChannelContextType {
   channels: Channel[];
   filteredChannels: Channel[];
   currentChannel: Channel | null;
   filter: ChannelFilter;
+  groups: string[];
   isLoading: boolean;
   error: string | null;
   setCurrentChannel: (channel: Channel) => void;
   setFilter: (filter: ChannelFilter) => void;
   toggleFavorite: (channelId: string) => void;
   refreshChannels: () => void;
-  loadChannelsFromURL: (url: string) => Promise<void>;
 }
 
 const ChannelContext = createContext<ChannelContextType | undefined>(undefined);
 
 export const ChannelProvider = ({ children }: { children: ReactNode }) => {
-  const { channels, isLoading, error, refetch, loadFromURL } = useM3U();
+  const { channels, isLoading, error, refetch } = useChannels();
   const [currentChannel, setCurrentChannel] = useState<Channel | null>(null);
+  const [favorites, setFavorites] = useState<string[]>([]);
   const [filter, setFilter] = useState<ChannelFilter>({
     category: 'All',
     language: 'All',
   });
 
-  const filteredChannels = channels.filter(ch => 
-    (filter.category === 'All' || ch.category === filter.category) &&
-    (filter.language === 'All' || ch.language === filter.language) &&
-    (!filter.search || ch.name.toLowerCase().includes(filter.search.toLowerCase()))
-  );
+  // Load saved favorites on mount
+  useEffect(() => {
+    AsyncStorage.getItem(STORAGE_KEYS.FAVORITES).then(val => {
+      if (val) setFavorites(JSON.parse(val));
+    });
+  }, []);
 
+  // Set default channel once channels load
   useEffect(() => {
     if (channels.length > 0 && !currentChannel) {
-      const defaultChannel = channels.find(ch => ch.number === APP_CONFIG.DEFAULT_CHANNEL) || channels[0];
+      const defaultChannel =
+        channels.find(ch => ch.number === APP_CONFIG.DEFAULT_CHANNEL) || channels[0];
       setCurrentChannel(defaultChannel);
     }
-  }, [channels, currentChannel]);
+  }, [channels]);
 
-  const toggleFavorite = (channelId: string) => {
-    // Implementation in AsyncStorageService
-  };
+  // Merge favorite state into channels
+  const channelsWithFavorites = channels.map(ch => ({
+    ...ch,
+    isFavorite: favorites.includes(ch.id),
+  }));
 
-  const refreshChannels = () => {
-    refetch();
-  };
+  // Derive groups dynamically from loaded channels
+  const groups = getGroupsFromChannels(channels);
 
-  const loadChannelsFromURL = async (url: string) => {
-    try {
-      // Validate URL
-      if (!url || url.trim() === '') {
-        throw new Error('Invalid URL');
-      }
+  // Filter logic — maps 'category' filter to DB 'group' field
+  const filteredChannels = channelsWithFavorites.filter(ch => {
+    const matchGroup =
+      filter.category === 'All' || ch.group === filter.category;
+    const matchLanguage =
+      filter.language === 'All' || ch.language === filter.language;
+    const matchSearch =
+      !filter.search || ch.name.toLowerCase().includes(filter.search.toLowerCase());
+    return matchGroup && matchLanguage && matchSearch;
+  });
 
-      // Check if it's a valid URL or file path
-      const isURL = url.startsWith('http://') || url.startsWith('https://');
-      
-      if (isURL) {
-        // Load from URL using the useM3U hook's loadFromURL method
-        await loadFromURL(url);
-        
-        // Save the custom URL for future use
-        await AsyncStorage.setItem('@iptv_custom_m3u_url', url);
-      } else {
-        // Handle local file path (if needed)
-        throw new Error('Local file loading not yet implemented');
-      }
-    } catch (error) {
-      console.error('Error loading channels from URL:', error);
-      throw error;
-    }
+  const toggleFavorite = async (channelId: string) => {
+    const updated = favorites.includes(channelId)
+      ? favorites.filter(id => id !== channelId)
+      : [...favorites, channelId];
+    setFavorites(updated);
+    await AsyncStorage.setItem(STORAGE_KEYS.FAVORITES, JSON.stringify(updated));
   };
 
   return (
     <ChannelContext.Provider
       value={{
-        channels,
+        channels: channelsWithFavorites,
         filteredChannels,
         currentChannel,
         filter,
+        groups,
         isLoading,
         error,
         setCurrentChannel,
         setFilter,
         toggleFavorite,
-        refreshChannels,
-        loadChannelsFromURL,
+        refreshChannels: refetch,
       }}
     >
       {children}
@@ -99,8 +97,6 @@ export const ChannelProvider = ({ children }: { children: ReactNode }) => {
 
 export const useChannelContext = () => {
   const context = useContext(ChannelContext);
-  if (!context) {
-    throw new Error('useChannelContext must be used within ChannelProvider');
-  }
+  if (!context) throw new Error('useChannelContext must be used within ChannelProvider');
   return context;
 };

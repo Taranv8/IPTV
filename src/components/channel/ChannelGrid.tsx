@@ -26,7 +26,7 @@ const ChannelGrid: React.FC<Props> = ({ onChannelSelect }) => {
         <TouchableOpacity
           key={channel.id}
           style={styles.card}
-          onPress={() => onChannelSelect(channel.number)}
+onPress={() => onChannelSelect(channel.number ?? 0)}
           activeOpacity={0.8}
         >
           {/* Channel Image */}
@@ -61,7 +61,7 @@ const ChannelGrid: React.FC<Props> = ({ onChannelSelect }) => {
             </Text>
             <View style={styles.tags}>
               <View style={styles.tag}>
-                <Text style={styles.tagText}>{channel.category}</Text>
+<Text style={styles.tagText}>{channel.group}</Text>
               </View>
               <View style={styles.tag}>
                 <Text style={styles.tagText}>{channel.language}</Text>

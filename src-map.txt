@@ -1,0 +1,89 @@
+src
+├── assets
+│   ├── animations
+│   ├── fonts
+│   └── images
+├── components
+│   ├── channel
+│   │   ├── CategorySelector.tsx
+│   │   ├── ChannelCard.tsx
+│   │   ├── ChannelFilters.tsx
+│   │   ├── ChannelGrid.tsx
+│   │   ├── ChannelItem.tsx
+│   │   ├── ChannelList.tsx
+│   │   ├── Keypad.tsx
+│   │   └── LanguageSelector.tsx
+│   ├── common
+│   │   ├── Button.tsx
+│   │   ├── ErrorBoundary.tsx
+│   │   ├── Input.tsx
+│   │   ├── Loading.tsx
+│   │   └── Modal.tsx
+│   ├── player
+│   │   ├── PlayerControls.tsx
+│   │   ├── PlayerOverlay.tsx
+│   │   └── VideoPlayer.tsx
+│   └── ui
+│       ├── Header.tsx
+│       ├── Navigation.tsx
+│       └── StatusBar.tsx
+├── constants
+│   ├── channels.m3u8
+│   ├── channels.ts
+│   ├── colors.ts
+│   ├── config.ts
+│   └── routes.ts
+├── context
+│   ├── ChannelContext.tsx
+│   ├── PlayerContext.tsx
+│   ├── SettingsContext.tsx
+│   └── ThemeContext.tsx
+├── hooks
+│   ├── useChannels.ts
+│   ├── useM3U.ts
+│   ├── useOrientation.ts
+│   ├── usePlayer.ts
+│   └── useSettings.ts
+├── navigation
+│   ├── AppNavigator.tsx
+│   └── RootNavigator.tsx
+├── screens
+│   ├── advanced
+│   │   └── AdvancedUIScreen.tsx
+│   ├── selection
+│   │   └── SelectionScreen.tsx
+│   ├── settings
+│   │   └── SettingsScreen.tsx
+│   ├── simple
+│   │   └── SimpleUIScreen.tsx
+│   └── splash
+│       └── SplashScreen.tsx
+├── services
+│   ├── api
+│   │   ├── apiClient.ts
+│   │   └── channelApi.ts
+│   ├── error
+│   │   ├── CrashHandler.ts
+│   │   ├── ErrorLogger.ts
+│   │   └── ErrorReporter.ts
+│   ├── m3u
+│   │   ├── channels.m3u8
+│   │   ├── M3UFetcher.ts
+│   │   ├── M3UParser.ts
+│   │   └── M3UValidator.ts
+│   ├── storage
+│   │   ├── AsyncStorageService.ts
+│   │   ├── CacheService.ts
+│   │   └── PreferencesService.ts
+│   └── stream
+│       └── StreamResolver.ts
+├── types
+│   ├── channel.ts
+│   ├── m3u.ts
+│   ├── navigation.ts
+│   └── player.ts
+└── utils
+    ├── channelUtils.ts
+    ├── formatters.ts
+    ├── helpers.ts
+    └── validators.ts

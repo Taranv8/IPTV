@@ -2,10 +2,9 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { Channel } from '../../types/channel';
 import { useChannelContext } from '../../context/ChannelContext';
-import { CATEGORIES, LANGUAGES } from '../../constants/channels';
 import { APP_CONFIG } from '../../constants/config';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-
+const { filter, setFilter, groups } = useChannelContext();
 interface Props {
   channels: Channel[];
   currentChannel: Channel | null;
@@ -40,74 +39,69 @@ const ChannelList: React.FC<Props> = ({
         </View>
 
         {/* Filters */}
-        <View style={styles.filters}>
-          <View style={styles.selectContainer}>
-            <Icon name="shape" size={14} color="#9ca3af" style={styles.selectIcon} />
-           <TouchableOpacity
-  style={styles.select}
-  onPress={() => {
-    setFilter({ ...filter, category: 'Sports' }); // example
-    setChannelPage(0);
-  }}
->
-  <Text style={{ color: '#fff' }}>{filter.category}</Text>
-</TouchableOpacity>
-
-          </View>
-
-          <View style={styles.selectContainer}>
-            <Icon name="web" size={14} color="#9ca3af" style={styles.selectIcon} />
-          <TouchableOpacity
-  style={styles.select}
-  onPress={() => {
-    setFilter({ ...filter, category: 'Sports' }); // example
-    setChannelPage(0);
-  }}
->
-  <Text style={{ color: '#fff' }}>{filter.category}</Text>
-</TouchableOpacity>
-
-          </View>
-        </View>
+<View style={styles.filters}>
+  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+    {groups.map(group => (
+      <TouchableOpacity
+        key={group}
+        style={[
+          styles.filterChip,
+          filter.category === group && styles.filterChipActive,
+        ]}
+        onPress={() => {
+          setFilter({ ...filter, category: group });
+          setChannelPage(0);
+        }}
+      >
+        <Text style={[
+          styles.filterChipText,
+          filter.category === group && styles.filterChipTextActive,
+        ]}>
+          {group}
+        </Text>
+      </TouchableOpacity>
+    ))}
+  </ScrollView>
+</View>
       </View>
 
       {/* Channel List */}
       <ScrollView style={styles.list} contentContainerStyle={styles.listContent}>
-        {displayedChannels.map((channel) => (
-          <TouchableOpacity
-            key={channel.id}
-            style={[
-              styles.channelItem,
-              currentChannel?.number === channel.number && styles.channelItemActive,
-            ]}
-            onPress={() => onChannelSelect(channel.number)}
-            activeOpacity={0.7}
-          >
-            <View style={styles.channelInfo}>
-              <Text
-                style={[
-                  styles.channelNumber,
-                  currentChannel?.number === channel.number && styles.channelNumberActive,
-                ]}
-              >
-                {channel.number}
-              </Text>
-              <Text style={styles.channelName} numberOfLines={1}>
-                {channel.name}
-              </Text>
-              {channel.isFavorite && (
-                <Icon name="star" size={12} color="#fbbf24" />
-              )}
-            </View>
-            <View style={styles.channelBadges}>
-              {channel.isHD && (
-                <View style={styles.hdBadge}>
-                  <Text style={styles.hdText}>HD</Text>
-                </View>
-              )}
-            </View>
-          </TouchableOpacity>
-        ))}
+       {displayedChannels.map((channel, index) => (
+  <TouchableOpacity
+    key={channel.id}
+    style={[
+      styles.channelItem,
+      currentChannel?.id === channel.id && styles.channelItemActive,
+    ]}
+    onPress={() => onChannelSelect(channel.number ?? channelPage * APP_CONFIG.CHANNELS_PER_PAGE + index + 1)}
+    activeOpacity={0.7}
+  >
+    <View style={styles.channelInfo}>
+      <Text
+        style={[
+          styles.channelNumber,
+          currentChannel?.id === channel.id && styles.channelNumberActive,
+        ]}
+      >
+        {channel.number ?? index + 1 + channelPage * APP_CONFIG.CHANNELS_PER_PAGE}
+      </Text>
+      <Text style={styles.channelName} numberOfLines={1}>
+        {channel.name}
+      </Text>
+      {channel.isFavorite && (
+        <Icon name="star" size={12} color="#fbbf24" />
+      )}
+    </View>
+    <View style={styles.channelBadges}>
+      {channel.isHD && (
+        <View style={styles.hdBadge}>
+          <Text style={styles.hdText}>HD</Text>
+        </View>
+      )}
+    </View>
+  </TouchableOpacity>
+))}
       </ScrollView>
 
       {/* Pagination */}
@@ -264,6 +258,27 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
   },
+  filterChip: {
+  paddingHorizontal: 12,
+  paddingVertical: 6,
+  backgroundColor: 'rgba(55, 65, 81, 0.5)',
+  borderRadius: 16,
+  marginRight: 8,
+  borderWidth: 1,
+  borderColor: '#374151',
+},
+filterChipActive: {
+  backgroundColor: '#2563eb',
+  borderColor: '#3b82f6',
+},
+filterChipText: {
+  color: '#9ca3af',
+  fontSize: 12,
+  fontWeight: '500',
+},
+filterChipTextActive: {
+  color: '#fff',
+},
 });
 
 export default ChannelList;

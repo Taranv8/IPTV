@@ -2,11 +2,11 @@ import React from 'react';
 import { View, StyleSheet, Platform } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { useChannelContext } from '../../context/ChannelContext';
-import { CATEGORIES, LANGUAGES } from '../../constants/channels';
+import { LANGUAGES } from '../../constants/channels';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
 const ChannelFilters: React.FC = () => {
-  const { filter, setFilter } = useChannelContext();
+  const { filter, setFilter, groups } = useChannelContext();
 
   return (
     <View style={styles.container}>
@@ -19,12 +19,12 @@ const ChannelFilters: React.FC = () => {
           dropdownIconColor="#9ca3af"
           mode="dropdown"
         >
-          {CATEGORIES.map((cat) => (
-            <Picker.Item 
-              key={cat} 
-              label={`📺 ${cat}`} 
-              value={cat}
-              color={Platform.OS === 'ios' ? '#fff' : '#fff'}
+          {groups.map((group) => (
+            <Picker.Item
+              key={group}
+              label={`📺 ${group}`}
+              value={group}
+              color="#fff"
             />
           ))}
         </Picker>
@@ -40,11 +40,11 @@ const ChannelFilters: React.FC = () => {
           mode="dropdown"
         >
           {LANGUAGES.map((lang) => (
-            <Picker.Item 
-              key={lang} 
-              label={`🌐 ${lang}`} 
+            <Picker.Item
+              key={lang}
+              label={`🌐 ${lang}`}
               value={lang}
-              color={Platform.OS === 'ios' ? '#fff' : '#fff'}
+              color="#fff"
             />
           ))}
         </Picker>

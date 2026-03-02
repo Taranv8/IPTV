@@ -15,7 +15,7 @@ interface Props {
 const SelectionScreen: React.FC<Props> = ({ navigation }) => {
   const { uiMode, setUIMode } = useSettings();
   const [selectedUI, setSelectedUI] = useState<'simple' | 'advanced'>(uiMode);
-  const [countdown, setCountdown] = useState(APP_CONFIG.SELECTION_COUNTDOWN);
+  const [countdown, setCountdown] = useState(APP_CONFIG.UI_SELECTION_COUNTDOWN);
   const scaleAnim = new Animated.Value(1);
 
   useEffect(() => {
@@ -38,7 +38,7 @@ const SelectionScreen: React.FC<Props> = ({ navigation }) => {
 };
   const handleSelect = (mode: 'simple' | 'advanced') => {
     setSelectedUI(mode);
-    setCountdown(APP_CONFIG.SELECTION_COUNTDOWN);
+    setCountdown(APP_CONFIG.UI_SELECTION_COUNTDOWN);
     
     Animated.sequence([
       Animated.timing(scaleAnim, {

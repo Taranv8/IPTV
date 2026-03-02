@@ -16,8 +16,7 @@ const Keypad: React.FC<Props> = ({ onChannelSelect }) => {
     } else if (key === 'GO') {
       if (input) {
         const channelNum = parseInt(input);
-        if (channelNum >= APP_CONFIG.MIN_CHANNEL_NUMBER && 
-            channelNum <= APP_CONFIG.MAX_CHANNEL_NUMBER) {
+        if (channelNum >= 1) {
           onChannelSelect(channelNum);
         }
         setInput('');

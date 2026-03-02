@@ -1,12 +1,12 @@
-export const CATEGORIES = [
+export const DEFAULT_GROUPS = [
   'All',
-  'Entertainment',
-  'News',
-  'Sports',
-  'Movies',
-  'Kids',
-  'Music',
-  'Documentary',
+  'HINDI',
+  'ENGLISH',
+  'SPORTS',
+  'NEWS',
+  'MOVIES',
+  'KIDS',
+  'MUSIC',
 ];
 
 export const LANGUAGES = [
@@ -18,3 +18,9 @@ export const LANGUAGES = [
   'Kannada',
   'Malayalam',
 ];
+
+// Helper to get unique groups from loaded channels
+export const getGroupsFromChannels = (channels: { group?: string }[]): string[] => {
+  const groups = new Set(channels.map(ch => ch.group || 'Uncategorized'));
+  return ['All', ...Array.from(groups).sort()];
+};

@@ -20,7 +20,7 @@ export class CacheService {
       if (!cached || !timestamp) return null;
       
       const cacheAge = Date.now() - parseInt(timestamp);
-      if (cacheAge > APP_CONFIG.M3U_REFRESH_INTERVAL) {
+      if (cacheAge > APP_CONFIG.CHANNEL_REFRESH_INTERVAL) {
         return null; // Cache expired
       }
       

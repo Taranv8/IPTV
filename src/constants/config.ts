@@ -2,14 +2,13 @@
 
 export const APP_CONFIG = {
   APP_NAME: 'IPTV Player',
-  M3U_URL: 'channels.m3u8',
-  FALLBACK_M3U_URL: 'https://iptv-org.github.io/iptv/index.m3u',
-  DEFAULT_CHANNEL: 100,
+API_BASE_URL: 'https://iptv-backend-8gds.onrender.com',
+  DEFAULT_CHANNEL: 1,
   SPLASH_DURATION: 3000,
   UI_SELECTION_COUNTDOWN: 5,
   CONTROLS_HIDE_DELAY: 5000,
   CHANNELS_PER_PAGE: 10,
-  M3U_REFRESH_INTERVAL: 24 * 60 * 60 * 1000,
+  CHANNEL_REFRESH_INTERVAL: 24 * 60 * 60 * 1000,
   ENABLE_CACHE: true,
   MAX_CACHE_AGE: 7 * 24 * 60 * 60 * 1000,
   REQUEST_TIMEOUT: 30000,

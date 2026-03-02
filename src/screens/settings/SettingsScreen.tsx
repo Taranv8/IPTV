@@ -24,27 +24,9 @@ interface Props {
 
 const SettingsScreen: React.FC<Props> = ({ navigation }) => {
   const { uiMode, setUIMode, autoHideControls, setAutoHideControls } = useSettings();
-  const { loadChannelsFromURL } = useChannelContext();
-  const [m3uUrl, setM3uUrl] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+const { refreshChannels } = useChannelContext();
 
-  const handleLoadM3U = async () => {
-    if (!m3uUrl.trim()) {
-      Alert.alert('Error', 'Please enter a valid M3U URL');
-      return;
-    }
-
-    setIsLoading(true);
-    try {
-      await loadChannelsFromURL(m3uUrl);
-      Alert.alert('Success', 'Channels loaded successfully!');
-      setM3uUrl('');
-    } catch (error) {
-      Alert.alert('Error', 'Failed to load channels. Please check the URL and try again.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+ 
 
   const handleClearData = () => {
     Alert.alert(
@@ -93,7 +75,7 @@ const SettingsScreen: React.FC<Props> = ({ navigation }) => {
             <View style={styles.divider} />
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>Version</Text>
-              <Text style={styles.infoValue}>{APP_CONFIG.VERSION}</Text>
+<Text style={styles.infoValue}>1.0.0</Text>
             </View>
           </View>
         </View>
@@ -171,32 +153,23 @@ const SettingsScreen: React.FC<Props> = ({ navigation }) => {
           </View>
         </View>
 
-        {/* Channel Source */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Channel Source</Text>
-          <View style={styles.card}>
-            <Text style={styles.cardLabel}>Load M3U Playlist</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Enter M3U URL or file path"
-              placeholderTextColor="#6b7280"
-              value={m3uUrl}
-              onChangeText={setM3uUrl}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-            <TouchableOpacity
-              style={[styles.loadButton, isLoading && styles.loadButtonDisabled]}
-              onPress={handleLoadM3U}
-              disabled={isLoading}
-            >
-              <Icon name="download" size={20} color="#fff" />
-              <Text style={styles.loadButtonText}>
-                {isLoading ? 'Loading...' : 'Load Channels'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+       {/* Channel Source */}
+<View style={styles.section}>
+  <Text style={styles.sectionTitle}>Channel Source</Text>
+  <View style={styles.card}>
+    <Text style={styles.cardLabel}>MongoDB API</Text>
+    <Text style={styles.settingDescription}>
+      Channels are loaded from your database automatically.
+    </Text>
+    <TouchableOpacity
+      style={[styles.loadButton, { marginTop: 12 }]}
+      onPress={refreshChannels}
+    >
+      <Icon name="refresh" size={20} color="#fff" />
+      <Text style={styles.loadButtonText}>Refresh Channels</Text>
+    </TouchableOpacity>
+  </View>
+</View>
 
         {/* Advanced Settings */}
         <View style={styles.section}>
