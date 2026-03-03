@@ -4,7 +4,6 @@ import { Channel } from '../../types/channel';
 import { useChannelContext } from '../../context/ChannelContext';
 import { APP_CONFIG } from '../../constants/config';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-const { filter, setFilter, groups } = useChannelContext();
 interface Props {
   channels: Channel[];
   currentChannel: Channel | null;
@@ -20,8 +19,8 @@ const ChannelList: React.FC<Props> = ({
   channelPage,
   setChannelPage,
 }) => {
-  const { filter, setFilter } = useChannelContext();
-
+const { filter, setFilter, groups } = useChannelContext();
+  
   const displayedChannels = channels.slice(
     channelPage * APP_CONFIG.CHANNELS_PER_PAGE,
     (channelPage + 1) * APP_CONFIG.CHANNELS_PER_PAGE
