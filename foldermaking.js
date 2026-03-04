@@ -192,7 +192,7 @@ console.log('3. Implement the M3U parser in src/services/m3u/');
 console.log('4. Set up error reporting in src/services/error/');
 console.log('5. Start building your screens!');
 
-// Create a basic package.json snippet for dependencies
+// Create a baaaaasic package.json snippet for dependencies
 const packageJsonSnippet = {
   dependencies: {
     "react": "18.2.0",
