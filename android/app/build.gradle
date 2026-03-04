@@ -25,7 +25,6 @@ android {
     }
 
     signingConfigs {
-
         debug {
             storeFile file('debug.keystore')
             storePassword 'android'
@@ -34,17 +33,14 @@ android {
         }
 
         release {
-        if (project.hasProperty('MYAPP_UPLOAD_STORE_FILE')) {
-            storeFile file(MYAPP_UPLOAD_STORE_FILE)
-            storePassword MYAPP_UPLOAD_STORE_PASSWORD
-            keyAlias MYAPP_UPLOAD_KEY_ALIAS
-            keyPassword MYAPP_UPLOAD_KEY_PASSWORD
+            storeFile file('my-release-key.keystore')
+            storePassword 'Taransi8'
+            keyAlias 'my-key-alias'
+            keyPassword 'Taransi8'
         }
-    }
     }
 
     buildTypes {
-
         debug {
             signingConfig signingConfigs.debug
         }
@@ -59,7 +55,6 @@ android {
 }
 
 dependencies {
-
     implementation("com.facebook.react:react-android")
 
     if (hermesEnabled.toBoolean()) {
