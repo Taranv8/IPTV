@@ -28,13 +28,23 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Decode the keystore from the base64 secret
+      - name: Decode Keystore
+        run: |
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > android/app/my-release-key.keystore
+
       - name: Make gradlew executable
         run: chmod +x android/gradlew
 
       - name: Build Release APK
         run: |
           cd android
-          ./gradlew assembleRelease --no-daemon
+          ./gradlew assembleRelease \
+            -PMYAPP_UPLOAD_STORE_FILE=../app/my-release-key.keystore \
+            -PMYAPP_UPLOAD_STORE_PASSWORD="${{ secrets.MYAPP_UPLOAD_STORE_PASSWORD }}" \
+            -PMYAPP_UPLOAD_KEY_ALIAS="${{ secrets.MYAPP_UPLOAD_KEY_ALIAS }}" \
+            -PMYAPP_UPLOAD_KEY_PASSWORD="${{ secrets.MYAPP_UPLOAD_KEY_PASSWORD }}" \
+            --no-daemon
 
       - name: Upload Release APK
         uses: actions/upload-artifact@v4
