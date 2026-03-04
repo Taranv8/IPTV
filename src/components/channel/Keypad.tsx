@@ -1,34 +1,79 @@
+// src/components/channel/Keypad.tsx
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { APP_CONFIG } from '../../constants/config';
+import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { APP_CONFIG } from '../../constants/config';
 
 interface Props {
   onChannelSelect: (channelNumber: number) => void;
+  // Called on every key press so the parent can reset the hide timer
+  onActivity?: () => void;
 }
 
-const Keypad: React.FC<Props> = ({ onChannelSelect }) => {
+interface KeyButtonProps {
+  label: string;
+  onPress: () => void;
+  variant?: 'normal' | 'go' | 'back';
+  isFirst?: boolean;
+}
+
+// Each key is extracted so it can track its own focus state for TV
+const KeyButton: React.FC<KeyButtonProps> = ({ label, onPress, variant = 'normal', isFirst }) => {
+  const [focused, setFocused] = useState(false);
+  const isTV = Platform.isTV;
+
+  return (
+    <TouchableOpacity
+      style={[
+        styles.key,
+        variant === 'go' && styles.keyGo,
+        variant === 'back' && styles.keyBack,
+        focused && styles.keyFocused,
+      ]}
+      onPress={onPress}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
+      activeOpacity={0.7}
+      hasTVPreferredFocus={isFirst && isTV}
+      accessibilityLabel={label === 'BACK' ? 'Backspace' : label === 'GO' ? 'Go to channel' : `Digit ${label}`}
+      accessibilityRole="button"
+    >
+      {label === 'BACK' ? (
+        <Icon
+          name="backspace-outline"
+          size={isTV ? 28 : 22}
+          color={focused ? '#fff' : '#e5e7eb'}
+        />
+      ) : (
+        <Text style={[styles.keyText, focused && styles.keyTextFocused, isTV && styles.tvKeyText]}>
+          {label}
+        </Text>
+      )}
+    </TouchableOpacity>
+  );
+};
+
+// ─── Keypad ───────────────────────────────────────────────────────────────────
+const Keypad: React.FC<Props> = ({ onChannelSelect, onActivity }) => {
   const [input, setInput] = useState('');
+  const isTV = Platform.isTV;
 
   const handleKeyPress = (key: string) => {
+    onActivity?.(); // every key press resets the menu hide timer
     if (key === 'BACK') {
-      setInput(input.slice(0, -1));
+      setInput(prev => prev.slice(0, -1));
     } else if (key === 'GO') {
       if (input) {
-        const channelNum = parseInt(input);
-        if (channelNum >= 1) {
-          onChannelSelect(channelNum);
-        }
+        const channelNum = parseInt(input, 10);
+        if (channelNum >= 1) onChannelSelect(channelNum);
         setInput('');
       }
     } else {
-      if (input.length < 3) {
-        setInput(input + key);
-      }
+      if (input.length < 3) setInput(prev => prev + key);
     }
   };
 
-  const keys = [
+  const keys: string[][] = [
     ['1', '2', '3'],
     ['4', '5', '6'],
     ['7', '8', '9'],
@@ -36,36 +81,33 @@ const Keypad: React.FC<Props> = ({ onChannelSelect }) => {
   ];
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, isTV && styles.tvContainer]}>
+      {/* Header */}
       <View style={styles.header}>
-        <Icon name="magnify" size={16} color="#fff" />
-        <Text style={styles.headerText}>Quick Jump</Text>
+        <Icon name="magnify" size={14} color="#fff" />
+        <Text style={[styles.headerText, isTV && styles.tvHeaderText]}>Quick Jump</Text>
       </View>
 
+      {/* Display */}
       <View style={styles.display}>
-        <Text style={styles.displayText}>{input || '---'}</Text>
+        <Text style={[styles.displayText, isTV && styles.tvDisplayText]}>
+          {input || '---'}
+        </Text>
       </View>
 
+      {/* Keys */}
       <View style={styles.keypadGrid}>
         {keys.map((row, rowIndex) => (
           <View key={rowIndex} style={styles.row}>
-            {row.map((key) => (
-              <TouchableOpacity
+            {row.map((key, colIndex) => (
+              <KeyButton
                 key={key}
-                style={[
-                  styles.key,
-                  key === 'GO' && styles.keyGo,
-                  key === 'BACK' && styles.keyBack,
-                ]}
+                label={key}
                 onPress={() => handleKeyPress(key)}
-                activeOpacity={0.7}
-              >
-                {key === 'BACK' ? (
-                  <Icon name="backspace-outline" size={24} color="#fff" />
-                ) : (
-                  <Text style={styles.keyText}>{key}</Text>
-                )}
-              </TouchableOpacity>
+                variant={key === 'GO' ? 'go' : key === 'BACK' ? 'back' : 'normal'}
+                // First key gets focus when TV focus enters keypad
+                isFirst={rowIndex === 0 && colIndex === 0}
+              />
             ))}
           </View>
         ))}
@@ -76,75 +118,105 @@ const Keypad: React.FC<Props> = ({ onChannelSelect }) => {
   );
 };
 
+// ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
-    borderRadius: 16,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: '#1f2937',
     overflow: 'hidden',
   },
+  tvContainer: {
+    borderRadius: 18,
+  },
+
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 12,
-    backgroundColor: 'rgba(124, 58, 237, 0.2)',
+    padding: 10,
+    backgroundColor: 'rgba(124,58,237,0.2)',
     borderBottomWidth: 1,
     borderBottomColor: '#1f2937',
   },
   headerText: {
     color: '#fff',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: 'bold',
-    marginLeft: 8,
+    marginLeft: 6,
   },
+  tvHeaderText: {
+    fontSize: 18,
+  },
+
   display: {
-    backgroundColor: 'rgba(17, 24, 39, 0.8)',
-    padding: 12,
-    margin: 12,
+    backgroundColor: 'rgba(17,24,39,0.8)',
+    padding: 10,
+    margin: 10,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#374151',
   },
   displayText: {
     color: '#fff',
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: 'bold',
     textAlign: 'center',
-    letterSpacing: 4,
+    letterSpacing: 6,
   },
+  tvDisplayText: {
+    fontSize: 32,
+  },
+
   keypadGrid: {
-    padding: 12,
-    gap: 8,
+    padding: 10,
+    gap: 6,
   },
   row: {
     flexDirection: 'row',
-    gap: 8,
+    gap: 6,
   },
+
+  // ── Key button ───────────────────────────────────────────────────────────────
   key: {
     flex: 1,
-    backgroundColor: 'rgba(55, 65, 81, 0.8)',
-    paddingVertical: 12,
+    backgroundColor: 'rgba(55,65,81,0.8)',
+    paddingVertical: 11,
     borderRadius: 8,
     justifyContent: 'center',
     alignItems: 'center',
+    // Transparent border reserves space so focus ring doesn't shift layout
+    borderWidth: 2,
+    borderColor: 'transparent',
   },
   keyGo: {
     backgroundColor: '#16a34a',
   },
   keyBack: {
-    backgroundColor: 'rgba(239, 68, 68, 0.8)',
+    backgroundColor: 'rgba(239,68,68,0.8)',
+  },
+  // TV focus ring — bright white border, user never loses their position
+  keyFocused: {
+    borderColor: '#60a5fa',
+    backgroundColor: 'rgba(96,165,250,0.25)',
   },
   keyText: {
-    color: '#fff',
-    fontSize: 20,
+    color: '#e5e7eb',
+    fontSize: 18,
     fontWeight: 'bold',
   },
+  tvKeyText: {
+    fontSize: 26,
+  },
+  keyTextFocused: {
+    color: '#fff',
+  },
+
   hint: {
     color: '#6b7280',
     fontSize: 10,
     textAlign: 'center',
-    paddingBottom: 12,
+    paddingBottom: 10,
   },
 });
 

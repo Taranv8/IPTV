@@ -1,4 +1,4 @@
-// components/player/VideoPlayer.tsx
+// src/components/player/VideoPlayer.tsx
 import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
@@ -6,6 +6,7 @@ import {
   ActivityIndicator,
   Text,
   TouchableOpacity,
+  Platform,
 } from 'react-native';
 import Video, { OnLoadData } from 'react-native-video';
 import { Channel } from '../../types/channel';
@@ -28,16 +29,15 @@ interface Props {
 }
 
 const VideoPlayer: React.FC<Props> = ({ channel }) => {
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [stream, setStream] = useState<ResolvedStream | null>(null);
+  const [isLoading, setIsLoading]   = useState(true);
+  const [error, setError]           = useState<string | null>(null);
+  const [stream, setStream]         = useState<ResolvedStream | null>(null);
   const [retryCount, setRetryCount] = useState(0);
   const videoRef = useRef<any>(null);
 
-  // ─── Resolve stream URL + type whenever channel changes ──────────────────────
+  // ─── Resolve stream URL whenever channel changes ────────────────────────
   useEffect(() => {
     let cancelled = false;
-
     setStream(null);
     setIsLoading(true);
     setError(null);
@@ -45,7 +45,7 @@ const VideoPlayer: React.FC<Props> = ({ channel }) => {
 
     (async () => {
       try {
-const resolved = await StreamResolver.resolve(channel.streamUrl);
+        const resolved = await StreamResolver.resolve(channel.streamUrl);
         if (!cancelled) {
           console.log(`[VideoPlayer] Playing ${resolved.type} stream:`, resolved.url);
           setStream(resolved);
@@ -62,41 +62,27 @@ const resolved = await StreamResolver.resolve(channel.streamUrl);
     return () => { cancelled = true; };
   }, [channel.streamUrl]);
 
-  // ─── Video event handlers ─────────────────────────────────────────────────────
-  const handleLoadStart = () => {
-    setIsLoading(true);
-    setError(null);
-  };
-
-  const handleLoad = (_data: OnLoadData) => {
-    setIsLoading(false);
-  };
-
-  const handleBuffer = ({ isBuffering }: { isBuffering: boolean }) => {
-    setIsLoading(isBuffering);
-  };
+  const handleLoadStart = () => { setIsLoading(true); setError(null); };
+  const handleLoad = (_data: OnLoadData) => { setIsLoading(false); };
+  const handleBuffer = ({ isBuffering }: { isBuffering: boolean }) => { setIsLoading(isBuffering); };
 
   const handleError = (err: any) => {
     setIsLoading(false);
-
     const exoError = err?.error?.errorCode;
-    const exoMsg = err?.error?.errorString;
+    const exoMsg   = err?.error?.errorString;
     console.error('[VideoPlayer] Playback error:', exoError, exoMsg);
 
-    // Auto-retry once: fall back to original URL with m3u8 assumption
     if (retryCount === 0 && stream?.url !== channel.streamUrl) {
       console.warn('[VideoPlayer] Retrying with original URL as m3u8');
       setRetryCount(1);
-setStream({ url: channel.streamUrl, type: 'm3u8' });
+      setStream({ url: channel.streamUrl, type: 'm3u8' });
       setIsLoading(true);
       return;
     }
-
-    // Auto-retry twice: if m3u8 failed, try mpd (some streams are DASH)
     if (retryCount === 1 && stream?.type === 'm3u8') {
       console.warn('[VideoPlayer] Retrying as DASH/MPD');
       setRetryCount(2);
-setStream({ url: channel.streamUrl, type: 'mpd' });
+      setStream({ url: channel.streamUrl, type: 'mpd' });
       setIsLoading(true);
       return;
     }
@@ -104,16 +90,15 @@ setStream({ url: channel.streamUrl, type: 'mpd' });
     setError('Channel unavailable');
     safeReport('Video playback error', 'PLAYBACK_ERROR', {
       channelNumber: channel.number,
-      channelName: channel.name,
-      originalUrl: channel.streamUrl,
-      resolvedUrl: stream?.url,
-      resolvedType: stream?.type,
+      channelName:   channel.name,
+      originalUrl:   channel.streamUrl,
+      resolvedUrl:   stream?.url,
+      resolvedType:  stream?.type,
       exoError,
       exoMsg,
     });
   };
 
-  // ─── Manual retry ─────────────────────────────────────────────────────────────
   const handleRetry = async () => {
     setError(null);
     setStream(null);
@@ -128,7 +113,6 @@ setStream({ url: channel.streamUrl, type: 'mpd' });
     }
   };
 
-  // ─── Error state ──────────────────────────────────────────────────────────────
   if (error) {
     return (
       <View style={styles.errorContainer}>
@@ -142,35 +126,48 @@ setStream({ url: channel.streamUrl, type: 'mpd' });
     );
   }
 
-  // ─── Main render ──────────────────────────────────────────────────────────────
   return (
     <View style={styles.container}>
       {stream ? (
-        <Video
-          ref={videoRef}
-          source={{
-            uri: stream.url,
-            // ✅ Explicit type prevents ExoPlayer from guessing wrong extractor
-            // m3u8 → HLS extractor, mpd → DASH extractor, etc.
-            type: stream.type,
-            headers: {
-              'User-Agent': 'VLC/3.0.18 LibVLC/3.0.18',
-              'Accept': 'application/x-mpegURL, application/vnd.apple.mpegurl, audio/mpegurl, application/dash+xml, */*',
-            },
-          }}
-          style={styles.video}
-          resizeMode="contain"
-          onLoadStart={handleLoadStart}
-          onLoad={handleLoad}
-          onError={handleError}
-          onBuffer={handleBuffer}
-          repeat={false}
-          playInBackground={false}
-          playWhenInactive={false}
-          ignoreSilentSwitch="ignore"
-          minLoadRetryCount={3}
-          reportBandwidth={false}
-        />
+        // ─── pointerEvents="none" wrapper ──────────────────────────────────
+        // react-native-video registers a native touch handler that silently
+        // swallows every tap and TV remote event while playing, so the parent
+        // Pressable and useSafeTVEvents never fire.
+        //
+        // Setting pointerEvents="none" on this wrapper tells the Android view
+        // system to skip this entire subtree for hit-testing, so all touches
+        // fall through to the tapCatcher overlay in SimpleUIScreen instead.
+        //
+        // focusable={false} + isTVSelectable={false} stop the Video view from
+        // grabbing TV remote focus, keeping D-pad events in the JS handler.
+        // ─────────────────────────────────────────────────────────────────────
+        <View style={styles.videoWrapper} pointerEvents="none">
+          <Video
+            ref={videoRef}
+            source={{
+              uri: stream.url,
+              type: stream.type,
+              headers: {
+                'User-Agent': 'VLC/3.0.18 LibVLC/3.0.18',
+                'Accept': 'application/x-mpegURL, application/vnd.apple.mpegurl, audio/mpegurl, application/dash+xml, */*',
+              },
+            }}
+            style={styles.video}
+            resizeMode="contain"
+            onLoadStart={handleLoadStart}
+            onLoad={handleLoad}
+            onError={handleError}
+            onBuffer={handleBuffer}
+            repeat={false}
+            playInBackground={false}
+            playWhenInactive={false}
+            ignoreSilentSwitch="ignore"
+            minLoadRetryCount={3}
+            reportBandwidth={false}
+            focusable={false}
+            {...(Platform.isTV ? { isTVSelectable: false } : {})}
+          />
+        </View>
       ) : null}
 
       {isLoading && (
@@ -186,9 +183,9 @@ setStream({ url: channel.streamUrl, type: 'mpd' });
   );
 };
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
+  videoWrapper: { flex: 1 },
   video: { flex: 1 },
   loadingContainer: {
     ...StyleSheet.absoluteFillObject,
@@ -196,8 +193,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: 'rgba(0,0,0,0.75)',
   },
-  loadingText: { color: '#fff', marginTop: 14, fontSize: 16, fontWeight: '500' },
-  loadingSubtext: { color: '#9ca3af', marginTop: 6, fontSize: 13 },
+  loadingText:    { color: '#fff',     marginTop: 14, fontSize: 16, fontWeight: '500' },
+  loadingSubtext: { color: '#9ca3af', marginTop: 6,  fontSize: 13 },
   errorContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -205,8 +202,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#0f0f0f',
     paddingHorizontal: 32,
   },
-  errorIcon: { fontSize: 56, marginBottom: 16 },
-  errorText: { color: '#ef4444', fontSize: 18, fontWeight: 'bold', marginBottom: 6 },
+  errorIcon:    { fontSize: 56, marginBottom: 16 },
+  errorText:    { color: '#ef4444', fontSize: 18, fontWeight: 'bold', marginBottom: 6 },
   errorSubtext: { color: '#6b7280', fontSize: 14, marginBottom: 24, textAlign: 'center' },
   retryButton: {
     backgroundColor: '#3b82f6',
