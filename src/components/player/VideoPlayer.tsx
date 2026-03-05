@@ -1,217 +1,390 @@
 // src/components/player/VideoPlayer.tsx
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View,
   StyleSheet,
   ActivityIndicator,
   Text,
-  TouchableOpacity,
   Platform,
+  AppState,
+  AppStateStatus,
 } from 'react-native';
-import Video, { OnLoadData } from 'react-native-video';
+import Video, { OnLoadData, OnProgressData } from 'react-native-video';
 import { Channel } from '../../types/channel';
 import { StreamResolver, ResolvedStream } from '../../services/stream/StreamResolver';
 
-async function safeReport(message: string, code: string, extras: Record<string, any>): Promise<void> {
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const STALL_TIMEOUT_MS  = 8_000;   // ms stuck buffering before forcing reconnect
+const RETRY_INTERVAL_MS = 5_000;   // ms between reconnect attempts
+
+// ExoPlayer error codes we handle explicitly
+const EXO_ERROR_BEHIND_LIVE_WINDOW = 21002; // fell behind live HLS window → seek to edge
+const EXO_ERROR_BAD_HTTP_STATUS    = 22004; // server rejected request → reconnect
+
+// ─── Buffer config ────────────────────────────────────────────────────────────
+//
+// For live IPTV streams the most important knobs are:
+//   backBufferDurationMs = 0   → discard played segments from RAM immediately
+//   maxBufferMs          = 10s → don't buffer too far ahead on live streams
+//                                (buffering too much ahead is what causes
+//                                 BEHIND_LIVE_WINDOW — ExoPlayer gets so far
+//                                 ahead that its position expires)
+
+const BUFFER_CONFIG = {
+  minBufferMs:                      3_000,   // reduced from 5s — reconnect faster
+  maxBufferMs:                     10_000,   // reduced from 15s — key fix for live streams
+  bufferForPlaybackMs:              2_000,   // start playing after 2s
+  bufferForPlaybackAfterRebufferMs: 3_000,   // resume after rebuffer with 3s
+  backBufferDurationMs:                 0,   // discard played segments immediately
+  cacheSizeMb:                          0,   // no disk cache
+} as const;
+
+const ACCEPT_HEADER =
+  'application/x-mpegURL, application/vnd.apple.mpegurl, audio/mpegurl, application/dash+xml, video/mp4, */*';
+
+// ─── ErrorReporter shim ───────────────────────────────────────────────────────
+
+async function safeReport(message: string, code: string, extras: Record<string, unknown>) {
   try {
-    const mod = require('../../services/error/ErrorReporter');
+    const mod      = require('../../services/error/ErrorReporter');
     const reporter = mod?.ErrorReporter ?? mod?.default;
     if (reporter && typeof reporter.report === 'function') {
       await reporter.report(new Error(message), code, extras);
     }
-  } catch (e) {
-    console.warn('[VideoPlayer] ErrorReporter threw, ignoring:', e);
-  }
+  } catch {}
 }
 
-interface Props {
-  channel: Channel;
-}
+// ─── Props ────────────────────────────────────────────────────────────────────
+
+interface Props { channel: Channel }
+
+// ─── Component ────────────────────────────────────────────────────────────────
 
 const VideoPlayer: React.FC<Props> = ({ channel }) => {
-  const [isLoading, setIsLoading]   = useState(true);
-  const [error, setError]           = useState<string | null>(null);
-  const [stream, setStream]         = useState<ResolvedStream | null>(null);
-  const [retryCount, setRetryCount] = useState(0);
-  const videoRef = useRef<any>(null);
 
-  // ─── Resolve stream URL whenever channel changes ────────────────────────
+  const [stream,           setStream]           = useState<ResolvedStream | null>(null);
+  const [isSpinnerVisible, setIsSpinnerVisible] = useState(true);
+  const [spinnerLabel,     setSpinnerLabel]     = useState('Resolving stream…');
+
+  const videoRef         = useRef<any>(null);
+  const cancelledRef     = useRef(false);
+  const stallTimerRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const retryTimerRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const retryCountRef    = useRef(0);
+  const scheduleRetryRef = useRef<() => void>(() => {});
+
+  // ── AppState ──────────────────────────────────────────────────────────────
+  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+  const [appActive, setAppActive] = useState(true);
+
   useEffect(() => {
-    let cancelled = false;
+    const sub = AppState.addEventListener('change', next => {
+      const was = appStateRef.current === 'active';
+      const now = next === 'active';
+      appStateRef.current = next;
+      if (was !== now) setAppActive(now);
+    });
+    return () => sub.remove();
+  }, []);
+
+  // ── Timer helpers ─────────────────────────────────────────────────────────
+
+  const clearStallTimer = useCallback(() => {
+    if (stallTimerRef.current !== null) {
+      clearTimeout(stallTimerRef.current);
+      stallTimerRef.current = null;
+    }
+  }, []);
+
+  const clearRetryTimer = useCallback(() => {
+    if (retryTimerRef.current !== null) {
+      clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
+  }, []);
+
+  const clearAllTimers = useCallback(() => {
+    clearStallTimer();
+    clearRetryTimer();
+  }, [clearStallTimer, clearRetryTimer]);
+
+  // ── Live-edge seek ────────────────────────────────────────────────────────
+  //
+  // Called when ExoPlayer throws ERROR_CODE_BEHIND_LIVE_WINDOW (21002).
+  //
+  // This error means the player's current position is older than the oldest
+  // segment still available in the live HLS playlist. The playlist has moved
+  // forward but the player hasn't.
+  //
+  // The correct fix is to seek to the live edge (the very end of the known
+  // stream), NOT to reconnect. Reconnecting restarts ExoPlayer from scratch
+  // which takes 2-3 seconds, falls behind again, and loops forever.
+  //
+  // react-native-video: seek(0) on a live stream seeks to the live edge
+  // because position 0 in a live stream means "the beginning of the live
+  // window" which is the most recent content, not the beginning of time.
+  // Alternatively seeking to a very large number forces ExoPlayer to the
+  // furthest available position.
+
+  const seekToLiveEdge = useCallback(() => {
+    if (!videoRef.current || cancelledRef.current) return;
+    console.log('[VideoPlayer] 🔁 Seeking to live edge (BEHIND_LIVE_WINDOW recovery)');
+    try {
+      // Seek to a very large number — ExoPlayer clamps it to the live edge
+      videoRef.current.seek(Number.MAX_SAFE_INTEGER);
+    } catch (e) {
+      console.warn('[VideoPlayer] seekToLiveEdge failed, falling back to reconnect:', e);
+      // If seek throws (older RN video versions), fall back to full reconnect
+      reconnect();
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Full reconnect ────────────────────────────────────────────────────────
+  //
+  // Used for genuine network/server failures (22004, generic errors).
+  // NOT used for BEHIND_LIVE_WINDOW — use seekToLiveEdge() for that.
+
+  const reconnect = useCallback(async () => {
+    if (cancelledRef.current) return;
+
+    retryCountRef.current += 1;
+    const attempt = retryCountRef.current;
+    console.log(`[VideoPlayer] 🔄 Reconnect #${attempt} — "${channel.name}"`);
+
+    setIsSpinnerVisible(true);
+    setSpinnerLabel(`Reconnecting… (attempt ${attempt})`);
+
+    let resolved: ResolvedStream | null = null;
+    try {
+      resolved = await StreamResolver.resolve(channel.streamUrl);
+    } catch (e: any) {
+      console.warn(`[VideoPlayer] ❌ Reconnect #${attempt} threw:`, e?.message ?? e);
+    }
+
+    if (cancelledRef.current) return;
+
+    if (resolved) {
+      console.log(`[VideoPlayer] ✅ Reconnect #${attempt} → ${resolved.type}:`, resolved.url);
+      setStream({ ...resolved });
+      setIsSpinnerVisible(true);
+      setSpinnerLabel('Loading channel…');
+    } else {
+      scheduleRetryRef.current();
+    }
+  }, [channel.name, channel.streamUrl]);
+
+  const scheduleNextRetry = useCallback(() => {
+    if (cancelledRef.current) return;
+    clearRetryTimer();
+    console.log(`[VideoPlayer] ⏱ Retry in ${RETRY_INTERVAL_MS / 1000}s`);
+    retryTimerRef.current = setTimeout(() => {
+      if (!cancelledRef.current) reconnect();
+    }, RETRY_INTERVAL_MS);
+  }, [clearRetryTimer, reconnect]);
+
+  useEffect(() => { scheduleRetryRef.current = scheduleNextRetry; }, [scheduleNextRetry]);
+
+  // ── Stall watchdog ────────────────────────────────────────────────────────
+
+  const startStallWatchdog = useCallback(() => {
+    clearStallTimer();
+    stallTimerRef.current = setTimeout(() => {
+      if (cancelledRef.current) return;
+      console.warn(`[VideoPlayer] ⚠️ Stalled ${STALL_TIMEOUT_MS / 1000}s — reconnecting`);
+      reconnect();
+    }, STALL_TIMEOUT_MS);
+  }, [clearStallTimer, reconnect]);
+
+  // ── Initial resolution ────────────────────────────────────────────────────
+
+  useEffect(() => {
+    cancelledRef.current = true;
+    clearAllTimers();
+
+    cancelledRef.current  = false;
+    retryCountRef.current = 0;
+
     setStream(null);
-    setIsLoading(true);
-    setError(null);
-    setRetryCount(0);
+    setIsSpinnerVisible(true);
+    setSpinnerLabel('Resolving stream…');
+
+    console.log(`[VideoPlayer] ── Channel: "${channel.name}" → ${channel.streamUrl}`);
 
     (async () => {
+      let resolved: ResolvedStream | null = null;
       try {
-        const resolved = await StreamResolver.resolve(channel.streamUrl);
-        if (!cancelled) {
-          console.log(`[VideoPlayer] Playing ${resolved.type} stream:`, resolved.url);
-          setStream(resolved);
-        }
-      } catch (e) {
-        if (!cancelled) {
-          console.error('[VideoPlayer] URL resolution threw:', e);
-          setError('Failed to resolve stream URL');
-          setIsLoading(false);
-        }
+        resolved = await StreamResolver.resolve(channel.streamUrl);
+      } catch (e: any) {
+        console.error('[VideoPlayer] Initial resolve threw:', e?.message ?? e);
+      }
+
+      if (cancelledRef.current) return;
+
+      if (resolved) {
+        console.log(`[VideoPlayer] Initial → ${resolved.type}:`, resolved.url);
+        setStream(resolved);
+        setSpinnerLabel('Loading channel…');
+      } else {
+        reconnect();
       }
     })();
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelledRef.current = true;
+      clearAllTimers();
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [channel.streamUrl]);
 
-  const handleLoadStart = () => { setIsLoading(true); setError(null); };
-  const handleLoad = (_data: OnLoadData) => { setIsLoading(false); };
-  const handleBuffer = ({ isBuffering }: { isBuffering: boolean }) => { setIsLoading(isBuffering); };
+  // ── ExoPlayer callbacks ───────────────────────────────────────────────────
 
-  const handleError = (err: any) => {
-    setIsLoading(false);
-    const exoError = err?.error?.errorCode;
-    const exoMsg   = err?.error?.errorString;
-    console.error('[VideoPlayer] Playback error:', exoError, exoMsg);
+  const handleLoadStart = useCallback(() => {
+    clearStallTimer();
+  }, [clearStallTimer]);
 
-    if (retryCount === 0 && stream?.url !== channel.streamUrl) {
-      console.warn('[VideoPlayer] Retrying with original URL as m3u8');
-      setRetryCount(1);
-      setStream({ url: channel.streamUrl, type: 'm3u8' });
-      setIsLoading(true);
+  const handleLoad = useCallback((_: OnLoadData) => {
+    if (cancelledRef.current) return;
+    clearAllTimers();
+    setIsSpinnerVisible(false);
+    console.log(`[VideoPlayer] ▶️  Playing "${channel.name}"`);
+  }, [clearAllTimers, channel.name]);
+
+  const handleBuffer = useCallback(({ isBuffering }: { isBuffering: boolean }) => {
+    if (cancelledRef.current) return;
+    if (!isBuffering) {
+      clearStallTimer();
+      setIsSpinnerVisible(false);
       return;
     }
-    if (retryCount === 1 && stream?.type === 'm3u8') {
-      console.warn('[VideoPlayer] Retrying as DASH/MPD');
-      setRetryCount(2);
-      setStream({ url: channel.streamUrl, type: 'mpd' });
-      setIsLoading(true);
+    setIsSpinnerVisible(true);
+    setSpinnerLabel('Loading channel…');
+    startStallWatchdog();
+  }, [clearStallTimer, startStallWatchdog]);
+
+  /**
+   * ExoPlayer error handler.
+   *
+   * IMPORTANT: Different errors need different recovery strategies.
+   *
+   * 21002 ERROR_CODE_BEHIND_LIVE_WINDOW
+   *   → The player fell behind the live HLS window (segments expired).
+   *   → Fix: seek to live edge. Fast, no reconnect needed.
+   *   → Do NOT reconnect — reconnect restarts ExoPlayer, causes 2-3s black
+   *     screen, and the player immediately falls behind again, creating a loop.
+   *
+   * 22004 ERROR_CODE_IO_BAD_HTTP_STATUS
+   *   → Server rejected the request (403, 500, etc.)
+   *   → Fix: full reconnect after RETRY_INTERVAL_MS.
+   *
+   * Everything else
+   *   → Full reconnect.
+   */
+  const handleError = useCallback((err: any) => {
+    if (cancelledRef.current) return;
+
+    const code = err?.error?.errorCode   as number | undefined;
+    const msg  = err?.error?.errorString as string | undefined;
+    console.error('[VideoPlayer] ExoPlayer error:', code, msg);
+
+    clearAllTimers();
+
+    // ── BEHIND_LIVE_WINDOW: seek to edge, do NOT reconnect ───────────────────
+    if (code === EXO_ERROR_BEHIND_LIVE_WINDOW) {
+      console.log('[VideoPlayer] BEHIND_LIVE_WINDOW — seeking to live edge');
+      setIsSpinnerVisible(true);
+      setSpinnerLabel('Catching up to live…');
+      seekToLiveEdge();
       return;
     }
 
-    setError('Channel unavailable');
-    safeReport('Video playback error', 'PLAYBACK_ERROR', {
-      channelNumber: channel.number,
-      channelName:   channel.name,
-      originalUrl:   channel.streamUrl,
-      resolvedUrl:   stream?.url,
-      resolvedType:  stream?.type,
-      exoError,
-      exoMsg,
+    // ── All other errors: full reconnect ──────────────────────────────────────
+    safeReport('Playback error', 'PLAYBACK_ERROR', {
+      channelId:   channel.id,
+      channelName: channel.name,
+      streamUrl:   channel.streamUrl,
+      exoCode:     code,
+      exoMsg:      msg,
     });
-  };
 
-  const handleRetry = async () => {
-    setError(null);
-    setStream(null);
-    setIsLoading(true);
-    setRetryCount(0);
-    try {
-      const resolved = await StreamResolver.resolve(channel.streamUrl);
-      setStream(resolved);
-    } catch {
-      setError('Failed to resolve stream URL');
-      setIsLoading(false);
-    }
-  };
+    retryTimerRef.current = setTimeout(() => {
+      if (!cancelledRef.current) reconnect();
+    }, RETRY_INTERVAL_MS);
+  }, [clearAllTimers, seekToLiveEdge, reconnect, channel]);
 
-  if (error) {
-    return (
-      <View style={styles.errorContainer}>
-        <Text style={styles.errorIcon}>📺</Text>
-        <Text style={styles.errorText}>Channel unavailable</Text>
-        <Text style={styles.errorSubtext}>{channel.name}</Text>
-        <TouchableOpacity style={styles.retryButton} onPress={handleRetry} activeOpacity={0.8}>
-          <Text style={styles.retryButtonText}>↺  Retry</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
+  const handleProgress = useCallback((_: OnProgressData) => {}, []);
+
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <View style={styles.container}>
-      {stream ? (
-        // ─── pointerEvents="none" wrapper ──────────────────────────────────
-        // react-native-video registers a native touch handler that silently
-        // swallows every tap and TV remote event while playing, so the parent
-        // Pressable and useSafeTVEvents never fire.
-        //
-        // Setting pointerEvents="none" on this wrapper tells the Android view
-        // system to skip this entire subtree for hit-testing, so all touches
-        // fall through to the tapCatcher overlay in SimpleUIScreen instead.
-        //
-        // focusable={false} + isTVSelectable={false} stop the Video view from
-        // grabbing TV remote focus, keeping D-pad events in the JS handler.
-        // ─────────────────────────────────────────────────────────────────────
+
+      {stream && (
         <View style={styles.videoWrapper} pointerEvents="none">
           <Video
             ref={videoRef}
             source={{
-              uri: stream.url,
+              uri:  stream.url,
               type: stream.type,
               headers: {
-                'User-Agent': 'VLC/3.0.18 LibVLC/3.0.18',
-                'Accept': 'application/x-mpegURL, application/vnd.apple.mpegurl, audio/mpegurl, application/dash+xml, */*',
+                'User-Agent': stream.userAgent,
+                'Accept':     ACCEPT_HEADER,
+                'Connection': 'keep-alive',
               },
             }}
             style={styles.video}
             resizeMode="contain"
-            onLoadStart={handleLoadStart}
-            onLoad={handleLoad}
-            onError={handleError}
-            onBuffer={handleBuffer}
+            bufferConfig={BUFFER_CONFIG}
+            paused={!appActive}
             repeat={false}
             playInBackground={false}
             playWhenInactive={false}
             ignoreSilentSwitch="ignore"
-            minLoadRetryCount={3}
+            minLoadRetryCount={5}
             reportBandwidth={false}
+            onLoadStart={handleLoadStart}
+            onLoad={handleLoad}
+            onError={handleError}
+            onBuffer={handleBuffer}
+            onProgress={handleProgress}
             focusable={false}
             {...(Platform.isTV ? { isTVSelectable: false } : {})}
           />
         </View>
-      ) : null}
+      )}
 
-      {isLoading && (
-        <View style={styles.loadingContainer}>
+      {isSpinnerVisible && (
+        <View style={styles.overlay}>
           <ActivityIndicator size="large" color="#3b82f6" />
-          <Text style={styles.loadingText}>
-            {stream ? 'Loading channel...' : 'Resolving stream...'}
-          </Text>
-          <Text style={styles.loadingSubtext}>{channel.name}</Text>
+          <Text style={styles.overlayLabel}>{spinnerLabel}</Text>
+          <Text style={styles.overlayChannel}>{channel.name}</Text>
+          {spinnerLabel.startsWith('Reconnecting') && (
+            <Text style={styles.overlayHint}>
+              Retrying every {RETRY_INTERVAL_MS / 1000}s — switch channel to stop
+            </Text>
+          )}
         </View>
       )}
+
     </View>
   );
 };
 
+// ─── Styles ───────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#000' },
+  container:    { flex: 1, backgroundColor: '#000' },
   videoWrapper: { flex: 1 },
-  video: { flex: 1 },
-  loadingContainer: {
+  video:        { flex: 1 },
+  overlay: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.75)',
+    backgroundColor: 'rgba(0,0,0,0.85)',
   },
-  loadingText:    { color: '#fff',     marginTop: 14, fontSize: 16, fontWeight: '500' },
-  loadingSubtext: { color: '#9ca3af', marginTop: 6,  fontSize: 13 },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#0f0f0f',
-    paddingHorizontal: 32,
-  },
-  errorIcon:    { fontSize: 56, marginBottom: 16 },
-  errorText:    { color: '#ef4444', fontSize: 18, fontWeight: 'bold', marginBottom: 6 },
-  errorSubtext: { color: '#6b7280', fontSize: 14, marginBottom: 24, textAlign: 'center' },
-  retryButton: {
-    backgroundColor: '#3b82f6',
-    paddingHorizontal: 28,
-    paddingVertical: 10,
-    borderRadius: 8,
-  },
-  retryButtonText: { color: '#fff', fontSize: 15, fontWeight: '600' },
+  overlayLabel:   { color: '#fff',     marginTop: 14, fontSize: 16, fontWeight: '600' },
+  overlayChannel: { color: '#9ca3af', marginTop: 6,  fontSize: 13 },
+  overlayHint:    { color: '#6b7280', marginTop: 8,  fontSize: 11, textAlign: 'center', paddingHorizontal: 24 },
 });
 
 export default VideoPlayer;
