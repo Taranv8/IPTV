@@ -2,7 +2,7 @@
 
 export const APP_CONFIG = {
   APP_NAME: 'IPTV Player',
-API_BASE_URL: 'https://iptv-backend-8gds.onrender.com',
+API_BASE_URL: 'https://iptv-backend-07rq.onrender.com',
   DEFAULT_CHANNEL: 1,
   SPLASH_DURATION: 3000,
   UI_SELECTION_COUNTDOWN: 5,

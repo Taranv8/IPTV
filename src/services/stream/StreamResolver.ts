@@ -31,6 +31,13 @@ export const DEFAULT_STREAM_HEADERS = {
   'Connection':      'keep-alive',
 };
 
+// ─── Source cycling ───────────────────────────────────────────────────────────
+//
+// Exported so VideoPlayer can force an immediate source switch on fatal errors
+// (PARSING_MANIFEST_MALFORMED, BAD_HTTP_STATUS) without waiting for N retries.
+
+export const MAX_RETRIES_PER_SOURCE = 3;
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type StreamType = 'm3u8' | 'mpd' | 'mp4' | 'ts' | 'flv' | 'mkv' | 'rtmp' | 'rtsp';
@@ -93,10 +100,24 @@ function hexToBase64Url(hex: string): string {
  *
  * Example input: "6f7b7241b2935a909d389fe318e5baaa:65783311644973348f359dc154bb41db"
  *
- * Returns null if the string is malformed (logs a warning).
+ * Returns null if the string is malformed, missing, or contains null literals.
  */
-export function parseClearKeyString(licenseKey: string): ClearKeyDRM | null {
-  const parts = licenseKey.trim().split(':');
+export function parseClearKeyString(licenseKey: string | null | undefined): ClearKeyDRM | null {
+  if (!licenseKey) return null;
+
+  const trimmed = licenseKey.trim();
+
+  // Reject literal "null:null" or any half-null like "null:abc" / "abc:null"
+  if (
+    trimmed === 'null:null' ||
+    trimmed.startsWith('null:') ||
+    trimmed.endsWith(':null')
+  ) {
+    console.warn('[StreamResolver] licenseKey contains null literals — ignoring DRM:', trimmed);
+    return null;
+  }
+
+  const parts = trimmed.split(':');
   if (parts.length !== 2 || !parts[0] || !parts[1]) {
     console.warn('[StreamResolver] Malformed ClearKey licenseKey:', licenseKey);
     return null;
@@ -187,6 +208,7 @@ export class StreamResolver {
    *   rtmp / rtsp              → return as-is
    *   .mp4 / .ts / .flv / .mkv → return as-is
    *   PHP wrapper / opaque URL → return as-is WITHOUT pre-fetch
+   *   signed CDN token URL     → return as-is WITHOUT pre-fetch (FIX #4)
    *   .m3u8 / .mpd             → single HEAD for redirect detection only
    *   unknown non-PHP URL      → single GET to detect type / follow redirect
    */
@@ -206,31 +228,66 @@ export class StreamResolver {
       return { url: '', type: 'm3u8', userAgent: VLC_USER_AGENT };
     }
 
-    // ── Resolve effective User-Agent ────────────────────────────────────────
-    // Stream-level UA (e.g. "@StreamFlex19") > VLC default.
-    // Strip leading "@" if present (some IPTV sources prefix UA with "@").
+    // ── Resolve effective User-Agent ─────────────────────────────────────────
+    // Some IPTV sources prefix the UA string with "@" as a label marker
+    // (e.g. "@StreamFlex19"). After stripping "@", check whether what remains
+    // looks like a real HTTP User-Agent (contains "/" or "mozilla").
+    // If it's just a bare label token, fall back to VLC_USER_AGENT so
+    // ExoPlayer doesn't send a nonsense UA string to the CDN.
     const rawUA = streamEntry.userAgent ?? '';
-    const userAgent = rawUA
-      ? rawUA.startsWith('@') ? rawUA.slice(1) : rawUA
-      : VLC_USER_AGENT;
+    const stripped = rawUA.startsWith('@') ? rawUA.slice(1) : rawUA;
+    const looksLikeRealUA =
+      stripped.length > 0 &&
+      (stripped.includes('/') || stripped.toLowerCase().includes('mozilla'));
+    const userAgent = looksLikeRealUA ? stripped : VLC_USER_AGENT;
 
-    // ── Build extra HTTP headers from the stream entry ───────────────────────
-    const httpHeaders: Record<string, string> | undefined =
-      streamEntry.httpHeaders && Object.keys(streamEntry.httpHeaders).length > 0
-        ? streamEntry.httpHeaders
-        : undefined;
+    // ── Build + normalise HTTP headers ────────────────────────────────────────
+    // Rules applied here:
+    //   1. Skip "user-agent" (any casing) — it is already handled by the
+    //      dedicated `userAgent` field and the explicit User-Agent header we
+    //      set in VideoPlayer. Passing it again as a separate header causes
+    //      ExoPlayer to receive two conflicting UA values (real UA + the raw
+    //      "@StreamFlex19" label), which can make the CDN reject the request.
+    //   2. Normalise "cookie" (any casing) → "Cookie" — ExoPlayer / OkHttp
+    //      are case-sensitive and only forward the header if the key matches
+    //      exactly.
+    const httpHeaders: Record<string, string> | undefined = (() => {
+      const raw = streamEntry.httpHeaders;
+      if (!raw || Object.keys(raw).length === 0) return undefined;
 
-    // ── Parse DRM config ─────────────────────────────────────────────────────
+      const normalised: Record<string, string> = {};
+      for (const [k, v] of Object.entries(raw)) {
+        // FIX: drop user-agent from httpHeaders — it is handled separately
+        if (k.toLowerCase() === 'user-agent') continue;
+        // Normalise "cookie" (any casing) → "Cookie"
+        const normKey = k.toLowerCase() === 'cookie' ? 'Cookie' : k;
+        normalised[normKey] = v;
+      }
+      return Object.keys(normalised).length > 0 ? normalised : undefined;
+    })();
+
+    // ── Parse DRM config ──────────────────────────────────────────────────────
     let drm: DRMConfig | null = null;
     if (streamEntry.licenseType) {
       switch (streamEntry.licenseType) {
-        case 'clearkey':
-          if (streamEntry.licenseKey) {
-            drm = parseClearKeyString(streamEntry.licenseKey);
+        case 'clearkey': {
+          const lk = streamEntry.licenseKey;
+          if (
+            lk &&
+            lk !== 'null:null' &&
+            !lk.startsWith('null:') &&
+            !lk.endsWith(':null')
+          ) {
+            drm = parseClearKeyString(lk);
           } else {
-            console.warn('[StreamResolver] ClearKey stream missing licenseKey:', url);
+            console.warn(
+              '[StreamResolver] ClearKey licenseKey is null/missing — playing without DRM:',
+              url,
+            );
+            drm = null;
           }
           break;
+        }
 
         case 'widevine':
         case 'playready':
@@ -265,7 +322,6 @@ export class StreamResolver {
     }
 
     // ── 3. PHP wrapper / opaque URL → pass directly to ExoPlayer ─────────────
-    // DRM info is still attached — ExoPlayer will use it when decrypting.
     if (isOpaqueWrapper(url)) {
       console.log('[StreamResolver] Opaque wrapper — passing directly to ExoPlayer:', url);
       return { url, type: 'm3u8', userAgent, httpHeaders, drm };
@@ -273,6 +329,33 @@ export class StreamResolver {
 
     // ── 4. Known m3u8 / mpd: single HEAD for redirect detection ──────────────
     if (knownType === 'm3u8' || knownType === 'mpd') {
+      // FIX: Skip HEAD pre-flight for URLs that carry signed auth tokens.
+      //
+      // Previously this only checked the URL query string for tokens, but
+      // JioTV encodes __hdnea__ inside the Cookie *header* rather than the
+      // URL. A HEAD pre-flight to these CDN endpoints counts as a session
+      // hit and can invalidate the token before ExoPlayer's manifest fetch,
+      // causing ERROR_CODE_IO_BAD_HTTP_STATUS (22004).
+      //
+      // We now also inspect the normalised Cookie header.
+      const cookieValue = httpHeaders?.['Cookie'] ?? '';
+      const hasSignedToken =
+        url.includes('__hdnea__') ||
+        url.includes('__token__') ||
+        url.includes('hdntl=')    ||
+        url.includes('hmac=')     ||
+        cookieValue.includes('__hdnea__') ||  // JioTV CDN token in cookie
+        cookieValue.includes('hdntl=')    ||
+        cookieValue.includes('hmac=');
+
+      if (hasSignedToken) {
+        console.log(
+          `[StreamResolver] Signed-token ${knownType} — skipping HEAD, passing directly:`,
+          url,
+        );
+        return { url, type: knownType, userAgent, httpHeaders, drm };
+      }
+
       console.log(`[StreamResolver] Known ${knownType}, checking redirect:`, url);
       try {
         const headResult = await StreamResolver._head(url, userAgent, httpHeaders);
