@@ -6,14 +6,14 @@ export const apiClient = {
     const timeout = setTimeout(() => controller.abort(), APP_CONFIG.REQUEST_TIMEOUT);
 
     try {
-      const response = await fetch(
-        `${APP_CONFIG.API_BASE_URL}/channels`,
-        {
-          method: 'GET',
-          headers: { 'Content-Type': 'application/json' },
-          signal: controller.signal,
-        }
-      );
+    const response = await fetch(
+  `https://iptv-backend-production-9adb.up.railway.app/channels`,
+  {
+    method: 'GET',
+    headers: { 'Content-Type': 'application/json' },
+    signal: controller.signal,
+  }
+);
 
       if (!response.ok) {
         throw new Error(`API error: ${response.status} ${response.statusText}`);

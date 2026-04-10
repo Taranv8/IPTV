@@ -1,20 +1,19 @@
 // src/services/stream/StreamResolver.ts
 //
-// LESSON LEARNED from logs:
+// FIXES APPLIED:
 //
-// ranapk.online/JIOBEE/play.php?id=xxx is a JioTV-style middleware endpoint.
-// Every HTTP request it receives counts as a "session hit". When we fire
-// multiple GET requests trying to resolve the URL, the server sees them as
-// separate hits and rate-limits ExoPlayer's actual stream fetch with a 500.
+// 1. parseClearKeyString now detects URL-based licenseKeys
+//    (e.g. "https://keys.lrl45.workers.dev/key/1106") and returns a
+//    ClearKeyDRM with licenseServer instead of trying to hex-parse them.
+//    Previously this returned null → DRM was silently dropped → ExoPlayer
+//    tried to play encrypted content without keys → crash or black screen.
 //
-// The correct behaviour for PHP-wrapper / opaque URLs is to pass them
-// DIRECTLY to ExoPlayer without any pre-resolution. ExoPlayer handles
-// live HLS natively.
+// 2. ClearKeyDRM interface extended with optional licenseServer field so
+//    both inline (clearkeys map) and URL-based (licenseServer) variants
+//    are represented in the same type.
 //
-// DRM NOTE:
-// ClearKey streams (.mpd with PSSH) require a drm config on the Video
-// component. We pass the parsed DRMConfig through ResolvedStream so
-// VideoPlayer can attach it to <Video drm={...}> without re-parsing.
+// 3. All async paths wrapped in try/catch so a bad source never throws
+//    an unhandled rejection to the caller.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import axios from 'axios';
@@ -32,10 +31,6 @@ export const DEFAULT_STREAM_HEADERS = {
 };
 
 // ─── Source cycling ───────────────────────────────────────────────────────────
-//
-// Exported so VideoPlayer can force an immediate source switch on fatal errors
-// (PARSING_MANIFEST_MALFORMED, BAD_HTTP_STATUS) without waiting for N retries.
-
 export const MAX_RETRIES_PER_SOURCE = 3;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -43,13 +38,18 @@ export const MAX_RETRIES_PER_SOURCE = 3;
 export type StreamType = 'm3u8' | 'mpd' | 'mp4' | 'ts' | 'flv' | 'mkv' | 'rtmp' | 'rtsp';
 
 /**
- * Parsed ClearKey descriptor ready for react-native-video.
- * keys: Record<kid_base64url, key_base64url>
+ * ClearKey DRM — supports two variants:
+ *   a) Inline:  clearkeys map  { [kid_b64url]: key_b64url }
+ *   b) Remote:  licenseServer URL (ExoPlayer fetches the key from the endpoint)
+ *
+ * Exactly one of clearkeys / licenseServer will be present.
  */
 export interface ClearKeyDRM {
   type: 'clearkey';
-  /** Map of base64url(kid) → base64url(key) */
-  clearkeys: Record<string, string>;
+  /** Inline kid → key map (base64url-encoded). Present for hex "kid:key" strings. */
+  clearkeys?: Record<string, string>;
+  /** Remote key server URL. Present when licenseKey is an https:// URL. */
+  licenseServer?: string;
 }
 
 export interface WidevineDRM {
@@ -67,22 +67,17 @@ export interface PlayReadyDRM {
 export type DRMConfig = ClearKeyDRM | WidevineDRM | PlayReadyDRM;
 
 export interface ResolvedStream {
-  url:         string;
-  type:        StreamType;
-  userAgent:   string;
+  url:          string;
+  type:         StreamType;
+  userAgent:    string;
   /** Extra HTTP headers to pass to ExoPlayer (e.g. cookie, authorization). */
   httpHeaders?: Record<string, string>;
   /** DRM config — null/undefined means unencrypted stream. */
-  drm?:        DRMConfig | null;
+  drm?:         DRMConfig | null;
 }
 
 // ─── ClearKey key parser ──────────────────────────────────────────────────────
 
-/**
- * Converts a hex string to a base64url-encoded string.
- * Required because react-native-video ClearKey expects base64url kid/key pairs,
- * but the DB stores them as hex ("6f7b...aa:6578...db").
- */
 function hexToBase64Url(hex: string): string {
   const bytes: number[] = [];
   for (let i = 0; i + 1 < hex.length; i += 2) {
@@ -96,18 +91,20 @@ function hexToBase64Url(hex: string): string {
 }
 
 /**
- * Parses a ClearKey string in "kid_hex:key_hex" format into a DRMConfig.
+ * Parses a ClearKey licenseKey string into a DRMConfig.
  *
- * Example input: "6f7b7241b2935a909d389fe318e5baaa:65783311644973348f359dc154bb41db"
+ * Handles TWO formats:
+ *   a) Hex pair:  "6f7b...aa:6578...db"   → inline clearkeys map
+ *   b) URL:       "https://keys.example.com/key/123" → licenseServer
  *
- * Returns null if the string is malformed, missing, or contains null literals.
+ * Returns null when the string is missing, malformed, or contains null literals.
  */
 export function parseClearKeyString(licenseKey: string | null | undefined): ClearKeyDRM | null {
   if (!licenseKey) return null;
 
   const trimmed = licenseKey.trim();
 
-  // Reject literal "null:null" or any half-null like "null:abc" / "abc:null"
+  // Reject literal "null:null" or any half-null
   if (
     trimmed === 'null:null' ||
     trimmed.startsWith('null:') ||
@@ -117,19 +114,37 @@ export function parseClearKeyString(licenseKey: string | null | undefined): Clea
     return null;
   }
 
-  const parts = trimmed.split(':');
-  if (parts.length !== 2 || !parts[0] || !parts[1]) {
-    console.warn('[StreamResolver] Malformed ClearKey licenseKey:', licenseKey);
+  // ── FIX: URL-based license server ─────────────────────────────────────────
+  // Keys like "https://keys.lrl45.workers.dev/key/1106" must be passed to
+  // ExoPlayer as a licenseServer URL, NOT hex-parsed (they contain ":" in
+  // the protocol prefix which would break the hex splitter).
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    console.log('[StreamResolver] ClearKey licenseServer URL:', trimmed);
+    return { type: 'clearkey', licenseServer: trimmed };
+  }
+
+  // ── Hex pair  "kidHex:keyHex" ──────────────────────────────────────────────
+  const colonIdx = trimmed.indexOf(':');
+  if (colonIdx <= 0 || colonIdx === trimmed.length - 1) {
+    console.warn('[StreamResolver] Malformed ClearKey licenseKey (expected "kid:key" or URL):', licenseKey);
     return null;
   }
-  const [kidHex, keyHex] = parts;
+  const kidHex = trimmed.slice(0, colonIdx);
+  const keyHex = trimmed.slice(colonIdx + 1);
+
+  // Basic sanity: both parts should look like hex strings
+  if (!/^[0-9a-fA-F]+$/.test(kidHex) || !/^[0-9a-fA-F]+$/.test(keyHex)) {
+    console.warn('[StreamResolver] ClearKey parts are not valid hex — ignoring DRM:', licenseKey);
+    return null;
+  }
+
   try {
     return {
       type: 'clearkey',
       clearkeys: { [hexToBase64Url(kidHex)]: hexToBase64Url(keyHex) },
     };
   } catch (e) {
-    console.warn('[StreamResolver] ClearKey parse error:', e);
+    console.warn('[StreamResolver] ClearKey hex-to-base64url conversion failed:', e);
     return null;
   }
 }
@@ -163,8 +178,7 @@ function typeFromContentType(ct: string | undefined): StreamType | null {
 }
 
 /**
- * Returns true for PHP/opaque wrapper URLs.
- * These must NOT be pre-fetched — every request counts as a session hit.
+ * Returns true for PHP/opaque wrapper URLs that must NOT be pre-fetched.
  */
 function isOpaqueWrapper(url: string): boolean {
   const lower = url.toLowerCase();
@@ -194,28 +208,26 @@ export function getStreamType(url: string): StreamType {
 export class StreamResolver {
 
   /**
-   * Resolves a StreamUrl (or a plain URL string) to a ResolvedStream that
-   * VideoPlayer / ExoPlayer can consume directly.
-   *
-   * DRM handling:
-   *   - If the StreamUrl has licenseType === 'clearkey', the licenseKey string
-   *     is parsed and returned as a ClearKeyDRM config.
-   *   - Widevine / PlayReady are passed through as-is (licenseKey treated as
-   *     a license server URL).
-   *   - No DRM → drm field is null.
-   *
-   * Decision tree (URL-level):
-   *   rtmp / rtsp              → return as-is
-   *   .mp4 / .ts / .flv / .mkv → return as-is
-   *   PHP wrapper / opaque URL → return as-is WITHOUT pre-fetch
-   *   signed CDN token URL     → return as-is WITHOUT pre-fetch (FIX #4)
-   *   .m3u8 / .mpd             → single HEAD for redirect detection only
-   *   unknown non-PHP URL      → single GET to detect type / follow redirect
+   * Resolves a StreamUrl (or a plain URL string) to a ResolvedStream.
+   * Never throws — always returns a usable (possibly fallback) ResolvedStream.
    */
   static async resolve(streamUrlOrString: StreamUrl | string): Promise<ResolvedStream> {
+    try {
+      return await StreamResolver._resolveInternal(streamUrlOrString);
+    } catch (e: any) {
+      // Last-resort safety net so VideoPlayer never gets an unhandled rejection.
+      const url = typeof streamUrlOrString === 'string'
+        ? streamUrlOrString
+        : (streamUrlOrString as StreamUrl).url ?? '';
+      console.error('[StreamResolver] Unexpected error — falling back to raw URL:', e?.message ?? e);
+      return { url, type: getStreamType(url), userAgent: VLC_USER_AGENT };
+    }
+  }
 
-    // Normalise input — accept both a plain string (legacy callers) and a
-    // full StreamUrl object (new callers that have DRM info).
+  private static async _resolveInternal(
+    streamUrlOrString: StreamUrl | string,
+  ): Promise<ResolvedStream> {
+
     const streamEntry: StreamUrl =
       typeof streamUrlOrString === 'string'
         ? { url: streamUrlOrString }
@@ -224,42 +236,26 @@ export class StreamResolver {
     const url = streamEntry.url ?? '';
 
     if (!url) {
-      console.warn('[StreamResolver] Empty URL');
+      console.warn('[StreamResolver] Empty URL — returning empty stream');
       return { url: '', type: 'm3u8', userAgent: VLC_USER_AGENT };
     }
 
-    // ── Resolve effective User-Agent ─────────────────────────────────────────
-    // Some IPTV sources prefix the UA string with "@" as a label marker
-    // (e.g. "@StreamFlex19"). After stripping "@", check whether what remains
-    // looks like a real HTTP User-Agent (contains "/" or "mozilla").
-    // If it's just a bare label token, fall back to VLC_USER_AGENT so
-    // ExoPlayer doesn't send a nonsense UA string to the CDN.
-    const rawUA = streamEntry.userAgent ?? '';
+    // ── Effective User-Agent ──────────────────────────────────────────────────
+    const rawUA   = streamEntry.userAgent ?? '';
     const stripped = rawUA.startsWith('@') ? rawUA.slice(1) : rawUA;
     const looksLikeRealUA =
       stripped.length > 0 &&
       (stripped.includes('/') || stripped.toLowerCase().includes('mozilla'));
     const userAgent = looksLikeRealUA ? stripped : VLC_USER_AGENT;
 
-    // ── Build + normalise HTTP headers ────────────────────────────────────────
-    // Rules applied here:
-    //   1. Skip "user-agent" (any casing) — it is already handled by the
-    //      dedicated `userAgent` field and the explicit User-Agent header we
-    //      set in VideoPlayer. Passing it again as a separate header causes
-    //      ExoPlayer to receive two conflicting UA values (real UA + the raw
-    //      "@StreamFlex19" label), which can make the CDN reject the request.
-    //   2. Normalise "cookie" (any casing) → "Cookie" — ExoPlayer / OkHttp
-    //      are case-sensitive and only forward the header if the key matches
-    //      exactly.
+    // ── Normalise HTTP headers ────────────────────────────────────────────────
     const httpHeaders: Record<string, string> | undefined = (() => {
       const raw = streamEntry.httpHeaders;
       if (!raw || Object.keys(raw).length === 0) return undefined;
 
       const normalised: Record<string, string> = {};
       for (const [k, v] of Object.entries(raw)) {
-        // FIX: drop user-agent from httpHeaders — it is handled separately
-        if (k.toLowerCase() === 'user-agent') continue;
-        // Normalise "cookie" (any casing) → "Cookie"
+        if (k.toLowerCase() === 'user-agent') continue; // handled separately
         const normKey = k.toLowerCase() === 'cookie' ? 'Cookie' : k;
         normalised[normKey] = v;
       }
@@ -268,42 +264,43 @@ export class StreamResolver {
 
     // ── Parse DRM config ──────────────────────────────────────────────────────
     let drm: DRMConfig | null = null;
+
     if (streamEntry.licenseType) {
+      const lk = streamEntry.licenseKey;
+
       switch (streamEntry.licenseType) {
         case 'clearkey': {
-          const lk = streamEntry.licenseKey;
-          if (
-            lk &&
-            lk !== 'null:null' &&
-            !lk.startsWith('null:') &&
-            !lk.endsWith(':null')
-          ) {
-            drm = parseClearKeyString(lk);
+          if (lk && lk !== 'null:null' && !lk.startsWith('null:') && !lk.endsWith(':null')) {
+            const parsed = parseClearKeyString(lk);
+            if (parsed) {
+              drm = parsed;
+              console.log(
+                '[StreamResolver] ClearKey DRM:',
+                parsed.licenseServer
+                  ? `licenseServer=${parsed.licenseServer}`
+                  : `inline keys (${Object.keys(parsed.clearkeys ?? {}).length} kid/key pairs)`,
+              );
+            } else {
+              console.warn('[StreamResolver] ClearKey parse returned null — playing without DRM:', url);
+            }
           } else {
-            console.warn(
-              '[StreamResolver] ClearKey licenseKey is null/missing — playing without DRM:',
-              url,
-            );
-            drm = null;
+            console.warn('[StreamResolver] ClearKey licenseKey is null/missing — playing without DRM:', url);
           }
           break;
         }
 
         case 'widevine':
         case 'playready':
-          if (streamEntry.licenseKey) {
-            drm = {
-              type: streamEntry.licenseType,
-              licenseServer: streamEntry.licenseKey,
-              headers: httpHeaders,
-            };
+          if (lk) {
+            drm = { type: streamEntry.licenseType, licenseServer: lk, headers: httpHeaders };
+            console.log(`[StreamResolver] ${streamEntry.licenseType.toUpperCase()} DRM: licenseServer=${lk}`);
           } else {
             console.warn('[StreamResolver] DRM stream missing licenseKey (license server URL):', url);
           }
           break;
 
         default:
-          console.warn('[StreamResolver] Unknown licenseType:', streamEntry.licenseType);
+          console.warn('[StreamResolver] Unknown licenseType:', streamEntry.licenseType, '— playing without DRM');
       }
     }
 
@@ -327,32 +324,20 @@ export class StreamResolver {
       return { url, type: 'm3u8', userAgent, httpHeaders, drm };
     }
 
-    // ── 4. Known m3u8 / mpd: single HEAD for redirect detection ──────────────
+    // ── 4. Known m3u8 / mpd ───────────────────────────────────────────────────
     if (knownType === 'm3u8' || knownType === 'mpd') {
-      // FIX: Skip HEAD pre-flight for URLs that carry signed auth tokens.
-      //
-      // Previously this only checked the URL query string for tokens, but
-      // JioTV encodes __hdnea__ inside the Cookie *header* rather than the
-      // URL. A HEAD pre-flight to these CDN endpoints counts as a session
-      // hit and can invalidate the token before ExoPlayer's manifest fetch,
-      // causing ERROR_CODE_IO_BAD_HTTP_STATUS (22004).
-      //
-      // We now also inspect the normalised Cookie header.
       const cookieValue = httpHeaders?.['Cookie'] ?? '';
       const hasSignedToken =
         url.includes('__hdnea__') ||
         url.includes('__token__') ||
         url.includes('hdntl=')    ||
         url.includes('hmac=')     ||
-        cookieValue.includes('__hdnea__') ||  // JioTV CDN token in cookie
+        cookieValue.includes('__hdnea__') ||
         cookieValue.includes('hdntl=')    ||
         cookieValue.includes('hmac=');
 
       if (hasSignedToken) {
-        console.log(
-          `[StreamResolver] Signed-token ${knownType} — skipping HEAD, passing directly:`,
-          url,
-        );
+        console.log(`[StreamResolver] Signed-token ${knownType} — skipping HEAD:`, url);
         return { url, type: knownType, userAgent, httpHeaders, drm };
       }
 
@@ -364,7 +349,7 @@ export class StreamResolver {
           return { ...headResult, userAgent, httpHeaders, drm };
         }
       } catch (e: any) {
-        console.log('[StreamResolver] HEAD failed:', e?.message);
+        console.log('[StreamResolver] HEAD failed (non-fatal):', e?.message);
       }
       return { url, type: knownType, userAgent, httpHeaders, drm };
     }
@@ -378,7 +363,7 @@ export class StreamResolver {
         return { ...result, userAgent, httpHeaders, drm };
       }
     } catch (e: any) {
-      console.log('[StreamResolver] GET failed:', e?.response?.status ?? e?.message);
+      console.log('[StreamResolver] GET failed (non-fatal):', e?.response?.status ?? e?.message);
     }
 
     // ── 6. Fallback ───────────────────────────────────────────────────────────
@@ -408,10 +393,10 @@ export class StreamResolver {
     const resolvedUrl = (finalUrl && finalUrl !== url) ? finalUrl : url;
     const ctType      = typeFromContentType(res.headers?.['content-type']);
 
-    if (ctType)                           return { url: resolvedUrl, type: ctType,  userAgent };
+    if (ctType)                         return { url: resolvedUrl, type: ctType, userAgent };
     if (finalUrl && finalUrl !== url) {
       const ext = detectStreamType(finalUrl);
-      if (ext)                            return { url: finalUrl,    type: ext,     userAgent };
+      if (ext)                          return { url: finalUrl,    type: ext,    userAgent };
     }
     return null;
   }
@@ -432,7 +417,7 @@ export class StreamResolver {
       validateStatus: s => s >= 200 && s < 300,
     });
 
-    const body: string  = typeof res.data === 'string' ? res.data.trim() : '';
+    const body: string = typeof res.data === 'string' ? res.data.trim() : '';
     const finalUrl: string =
       (res.request as any)?.responseURL ||
       (res.config  as any)?.url         || '';
@@ -490,8 +475,10 @@ export class StreamResolver {
       const bw  = bwM ? parseInt(bwM[1], 10) : 0;
       const nxt = lines.slice(i + 1).find(l => l && !l.startsWith('#'));
       if (!nxt || nxt.startsWith('?')) continue;
-      const varUrl = nxt.startsWith('http') ? nxt : new URL(nxt, baseUrl).toString();
-      variants.push({ bw, url: varUrl });
+      try {
+        const varUrl = nxt.startsWith('http') ? nxt : new URL(nxt, baseUrl).toString();
+        variants.push({ bw, url: varUrl });
+      } catch {}
     }
     if (variants.length === 0) return null;
     variants.sort((a, b) => b.bw - a.bw);
@@ -505,7 +492,9 @@ export class StreamResolver {
     const m = body.match(/<BaseURL[^>]*>([^<]+)<\/BaseURL>/);
     if (m) {
       const raw = m[1].trim();
-      return { url: raw.startsWith('http') ? raw : new URL(raw, baseUrl).toString(), type: 'mpd' };
+      try {
+        return { url: raw.startsWith('http') ? raw : new URL(raw, baseUrl).toString(), type: 'mpd' };
+      } catch {}
     }
     return { url: baseUrl, type: 'mpd' };
   }
