@@ -5,6 +5,15 @@ import { ChannelProvider } from './src/context/ChannelContext';
 import { SettingsProvider } from './src/context/SettingsContext';
 import { ErrorBoundary } from './src/components/common/ErrorBoundary';
 
+
+// ← ADD THIS BLOCK (runs once when JS bundle loads)
+if (__DEV__ === false) {
+  ErrorUtils.setGlobalHandler((error, isFatal) => {
+    console.error('[GlobalError]', error?.message, 'fatal:', isFatal);
+    // isFatal = true means the app would crash — add crash reporting here later
+  });
+}
+
 export default function App() {
   return (
     <ErrorBoundary>

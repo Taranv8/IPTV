@@ -44,7 +44,7 @@ export const ChannelProvider = ({ children }: { children: ReactNode }) => {
         channels.find(ch => ch.number === APP_CONFIG.DEFAULT_CHANNEL) || channels[0];
       setCurrentChannel(defaultChannel);
     }
-  }, [channels]);
+  }, [channels, currentChannel]);
 
   // Merge favorite state into channels
   const channelsWithFavorites = channels.map(ch => ({

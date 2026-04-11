@@ -59,10 +59,10 @@ const BUFFER_CONFIG = {
   maxBufferMs:                     10_000,
   bufferForPlaybackMs:              2_000,
   bufferForPlaybackAfterRebufferMs: 3_000,
-  backBufferDurationMs:                 0,
-  cacheSizeMb:                          0,
+  // backBufferDurationMs:                 0,
+  // cacheSizeMb:                          0,
 } as const;
-
+const hasLoadedOnce = useRef(false);
 const ACCEPT_HEADER =
   'application/x-mpegURL, application/vnd.apple.mpegurl, audio/mpegurl, application/dash+xml, video/mp4, */*';
 
@@ -280,6 +280,9 @@ const VideoPlayerInner: React.FC<Props> = ({ channel }) => {
   // ── Initial resolution ────────────────────────────────────────────────────
 
   useEffect(() => {
+
+    if (!channel?.streamUrl && !channel?.streamUrls?.length) return; // ← ADD
+  
     cancelledRef.current = true;
     clearAllTimers();
 
@@ -324,10 +327,11 @@ const VideoPlayerInner: React.FC<Props> = ({ channel }) => {
 
     return () => {
       cancelledRef.current = true;
+    hasLoadedOnce.current = false;
       clearAllTimers();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [channel.streamUrl]);
+  }, [channel.id]);
 
   // ── ExoPlayer callbacks ───────────────────────────────────────────────────
 
@@ -346,6 +350,7 @@ const VideoPlayerInner: React.FC<Props> = ({ channel }) => {
       clearAllTimers();
       setIsSpinnerVisible(false);
       setErrorMessage(null);
+      hasLoadedOnce.current = true;
       console.log(`[VideoPlayer] \u25B6\uFE0F  Playing "${channel.name}"`);
     } catch (e) {
       console.warn('[VideoPlayer] handleLoad error:', e);
@@ -362,7 +367,7 @@ const VideoPlayerInner: React.FC<Props> = ({ channel }) => {
       }
       setIsSpinnerVisible(true);
       setSpinnerLabel('Loading channel\u2026');
-      startStallWatchdog();
+if (hasLoadedOnce.current) startStallWatchdog();
     } catch (e) {
       console.warn('[VideoPlayer] handleBuffer error:', e);
     }
@@ -414,9 +419,9 @@ const VideoPlayerInner: React.FC<Props> = ({ channel }) => {
         exoDomain:   domain,
       });
 
-      retryTimerRef.current = setTimeout(() => {
-        if (!cancelledRef.current) reconnectRef.current();
-      }, RETRY_INTERVAL_MS);
+     retryTimerRef.current = setTimeout(() => {
+  if (!cancelledRef.current) reconnectRef.current();   // ← correct
+}, RETRY_INTERVAL_MS);
     } catch (e) {
       // Never let handleError itself crash the app
       console.error('[VideoPlayer] handleError threw unexpectedly:', e);
@@ -433,10 +438,10 @@ const VideoPlayerInner: React.FC<Props> = ({ channel }) => {
       : 'Mozilla/5.0 (Linux; Android 14; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
     'Accept':     ACCEPT_HEADER,
     'Connection': 'keep-alive',
-    ...Object.fromEntries(
-      Object.entries(stream?.httpHeaders ?? {})
-        .filter(([k]) => k.toLowerCase() !== 'user-agent')
-    ),
+   ...Object.fromEntries(
+  Object.entries(stream?.httpHeaders ?? {})
+    .filter(([k]) => k.toLowerCase() !== 'user-agent')  // ← this is fine, keep it
+),
   };
 
   // Build DRM prop with validation — never pass an empty/broken config to native
@@ -466,6 +471,14 @@ const VideoPlayerInner: React.FC<Props> = ({ channel }) => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stream?.url]);
 
+
+
+  console.log('[DEBUG] stream:', JSON.stringify({
+  url: stream?.url,
+  type: stream?.type,
+  hasDRM: !!stream?.drm,
+  drmType: stream?.drm?.type,
+}));
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
@@ -473,33 +486,25 @@ const VideoPlayerInner: React.FC<Props> = ({ channel }) => {
 
       {stream && (
         <View style={styles.videoWrapper} pointerEvents="none">
-          <Video
-            key={stream.url}
-            ref={videoRef}
-            source={{
-              uri:     stream.url,
-              type:    stream.type,
-              headers: sourceHeaders,
-            }}
-            style={styles.video}
-            resizeMode="contain"
-            bufferConfig={BUFFER_CONFIG}
-            paused={!appActive}
-            repeat={false}
-            playInBackground={false}
-            playWhenInactive={false}
-            ignoreSilentSwitch="ignore"
-            minLoadRetryCount={5}
-            reportBandwidth={false}
-            onLoadStart={handleLoadStart}
-            onLoad={handleLoad}
-            onError={handleError}
-            onBuffer={handleBuffer}
-            onProgress={handleProgress}
-            focusable={false}
-            {...(drmProp ? { drm: drmProp } : {})}
-            {...(Platform.isTV ? { isTVSelectable: false } : {})}
-          />
+      <Video
+  key={stream.url}
+  ref={videoRef}
+  source={{
+    uri: stream.url,
+    headers: sourceHeaders,
+  }}
+  style={styles.video}
+  resizeMode="contain"
+  paused={!appActive}
+  repeat={false}
+  playInBackground={false}
+  ignoreSilentSwitch="ignore"
+  onLoadStart={handleLoadStart}
+  onLoad={handleLoad}
+  onError={handleError}
+  onBuffer={handleBuffer}
+  focusable={false}
+/>
         </View>
       )}
 

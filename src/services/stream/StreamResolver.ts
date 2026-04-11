@@ -139,10 +139,10 @@ export function parseClearKeyString(licenseKey: string | null | undefined): Clea
   }
 
   try {
-    return {
-      type: 'clearkey',
-      clearkeys: { [hexToBase64Url(kidHex)]: hexToBase64Url(keyHex) },
-    };
+return {
+  type: 'clearkey',
+  clearkeys: { [kidHex]: keyHex },   // ExoPlayer expects raw hex
+};
   } catch (e) {
     console.warn('[StreamResolver] ClearKey hex-to-base64url conversion failed:', e);
     return null;
