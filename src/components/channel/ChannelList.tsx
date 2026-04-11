@@ -258,14 +258,14 @@ const ChannelList: React.FC<Props> = ({
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#1f2937',
-    overflow: 'hidden',
-  },
+ container: {
+  flex: 1,
+  backgroundColor: 'rgba(0,0,0,0.7)',
+  borderRadius: 14,
+  borderWidth: 1,
+  borderColor: '#1f2937',
+  overflow: 'hidden',
+},
   header: {
     padding: 12,
     backgroundColor: 'rgba(59,130,246,0.15)',
@@ -312,7 +312,6 @@ const styles = StyleSheet.create({
   },
   listContent: {
     padding: 10,
-    gap: ITEM_GAP,
   },
 
   // ── Channel row — height MUST match ITEM_HEIGHT constant above ────────────
@@ -326,15 +325,17 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 2,
     borderColor: 'transparent',
+    marginBottom: 6,
   },
   channelItemActive: {
     backgroundColor: '#2563eb',
     borderColor: '#3b82f6',
   },
-  channelItemFocused: {
-    backgroundColor: 'rgba(59,130,246,0.35)',
-    borderColor: '#60a5fa',
-  },
+channelItemFocused: {
+  backgroundColor: 'rgba(255,59,48,0.2)',
+  borderColor: '#ff3b30', // 🔴 red focus
+  transform: [{ scale: 1.02 }],
+},
   channelInfo: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -353,6 +354,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#d1d5db',
     flex: 1,
+    flexShrink: 1,
   },
   channelNameActive: { color: '#fff' },
   channelBadges: {

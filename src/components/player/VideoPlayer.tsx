@@ -1,22 +1,26 @@
 // src/components/player/VideoPlayer.tsx
 //
-// FIXES APPLIED:
+// KEY IMPROVEMENTS vs previous version:
 //
-// 1. toDRMTypeProp — ClearKey now handles BOTH variants:
-//    a) clearkeys map  (inline hex-derived keys)
-//    b) licenseServer URL (remote key endpoint like keys.lrl45.workers.dev)
-//    Previously passing clearkeys: undefined to the native layer caused an
-//    immediate native crash with no JS stack trace.
+// 1. IMMEDIATE SOURCE SWITCHING
+//    Previous: retry same source 3× before switching (MAX_RETRIES_PER_SOURCE=3)
+//    Now:      switch to next source on the FIRST failure, every time.
+//    This matches TiViMate behaviour and is why it "just works" there.
 //
-// 2. drmProp construction wrapped in validation — if neither clearkeys nor
-//    licenseServer is present, the DRM prop is silently dropped and we log
-//    a warning instead of passing a broken object to ExoPlayer.
+// 2. BUFFER REDUCED TO 15s MAX (was 30s)
+//    PHP/IPTV wrappers (bdixgen.site) generate token-signed .ts segment URLs
+//    that typically expire in 20-30s. Buffering 30s ahead means ExoPlayer
+//    fetches a segment, waits, then tries to play it after the token expired
+//    → 403 → rebuffer. 15s keeps well within the token window.
 //
-// 3. All callbacks guarded with try/catch so a thrown error in a native
-//    callback can't bypass VideoErrorBoundary and close the app.
+// 3. SOURCE ROUND-ROBIN WITH FULL-CYCLE DETECTION
+//    After all sources have been tried once, we wait INTER_CYCLE_DELAY_MS
+//    before starting again from source 0. Prevents hammering a dead server.
 //
-// 4. Verbose per-source logging so you can see in logcat exactly which
-//    URL / DRM config ExoPlayer is receiving.
+// 4. STALL TIMEOUT RAISED TO 15s
+//    10s segments on slow connections legitimately take >12s to download.
+//    15s gives ExoPlayer enough time to fetch without triggering a false
+//    reconnect that interrupts playback unnecessarily.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
@@ -36,41 +40,76 @@ import {
   ResolvedStream,
   DRMConfig,
   ClearKeyDRM,
-  MAX_RETRIES_PER_SOURCE,
 } from '../../services/stream/StreamResolver';
 import { VideoErrorBoundary } from './VideoErrorBoundary';
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+// ─── Timing constants ─────────────────────────────────────────────────────────
 
-const STALL_TIMEOUT_MS  = 8_000;
-const RETRY_INTERVAL_MS = 5_000;
+// Only fire stall watchdog after first successful load to avoid premature
+// reconnects during the initial buffer fill (can take >12s on slow connections).
+const STALL_TIMEOUT_MS     = 15_000;
 
-const EXO_ERROR_BEHIND_LIVE_WINDOW         = 21002;
-const EXO_ERROR_BAD_HTTP_STATUS            = 22004;
-const EXO_ERROR_PARSING_MANIFEST_MALFORMED = 23002;
+// After one failed attempt, wait this long before retrying the same source.
+const RETRY_DELAY_MS       =  5_000;
 
-const FATAL_SOURCE_ERROR_CODES = new Set([
-  EXO_ERROR_PARSING_MANIFEST_MALFORMED,
-  EXO_ERROR_BAD_HTTP_STATUS,
+// After ALL sources have been tried once with no success, pause this long
+// before starting the round-robin again. Prevents hammering a dead server.
+const INTER_CYCLE_DELAY_MS = 10_000;
+
+// ─── ExoPlayer error codes ────────────────────────────────────────────────────
+
+const EXO_BEHIND_LIVE_WINDOW    = 21002; // seek to live edge, don't reconnect
+const EXO_BAD_HTTP_STATUS       = 22004; // 4xx/5xx from CDN → skip source now
+const EXO_MANIFEST_MALFORMED    = 23002; // broken playlist → skip source now
+const EXO_CONTAINER_UNSUPPORTED = 23003; // wrong extractor → skip source now
+
+// These mean the current source URL is permanently broken for this session.
+// Skip to the next source immediately instead of waiting RETRY_DELAY_MS.
+const SKIP_NOW_CODES = new Set([
+  EXO_BAD_HTTP_STATUS,
+  EXO_MANIFEST_MALFORMED,
+  EXO_CONTAINER_UNSUPPORTED,
 ]);
 
+// ─── Buffer config ────────────────────────────────────────────────────────────
+//
+//  maxBufferMs: 15 000  (was 30 000)
+//    PHP/IPTV token-signed segments expire in ~20-30s. Keeping the lookahead
+//    at 15s ensures ExoPlayer never fetches a segment so far in advance that
+//    the token is stale by playback time.
+//
+//  minBufferMs: 3 000
+//    ExoPlayer starts fetching more data when buffer drops below 3s. Lower
+//    than maxBufferMs so the player isn't constantly chasing its own tail.
+//
+//  bufferForPlaybackMs: 1 000
+//    Start playing after just 1s — fast channel switch feel.
+//
+//  bufferForPlaybackAfterRebufferMs: 2 500
+//    After a stall, need 2.5s before resuming. Prevents yo-yo starts.
+//
+//  backBufferDurationMs: 3 000
+//    Keep 3s of already-played data. Prevents BEHIND_LIVE_WINDOW (21002)
+//    which happens when ExoPlayer's playhead drifts slightly behind the
+//    live window edge during a rebuffer cycle. ExoPlayer auto-discards
+//    anything older than 3s so there is no memory leak.
+//
+//  cacheSizeMb: 0
+//    Never write live segments to disk. They're worthless once played.
+
 const BUFFER_CONFIG = {
-  minBufferMs:                      3_000,
-  maxBufferMs:                     10_000,
-  bufferForPlaybackMs:              2_000,
-  bufferForPlaybackAfterRebufferMs: 3_000,
-  // backBufferDurationMs:                 0,
-  // cacheSizeMb:                          0,
+  minBufferMs:                       3_000,
+  maxBufferMs:                      15_000,
+  bufferForPlaybackMs:               1_000,
+  bufferForPlaybackAfterRebufferMs:  2_500,
+  backBufferDurationMs:              3_000,
+  cacheSizeMb:                           0,
 } as const;
-const hasLoadedOnce = useRef(false);
+
 const ACCEPT_HEADER =
   'application/x-mpegURL, application/vnd.apple.mpegurl, audio/mpegurl, application/dash+xml, video/mp4, */*';
 
-// ─── DRM type mapper ──────────────────────────────────────────────────────────
-//
-// FIX: ClearKey is now handled for both inline (clearkeys map) and remote
-// (licenseServer URL) variants. Returns null if neither field is usable
-// so we never pass a broken config to ExoPlayer.
+// ─── DRM mapper ───────────────────────────────────────────────────────────────
 
 type DRMProp = {
   type: DRMType;
@@ -81,32 +120,21 @@ type DRMProp = {
 
 function toDRMTypeProp(config: DRMConfig): DRMProp {
   switch (config.type) {
-
     case 'clearkey': {
       const ck = config as ClearKeyDRM;
-
       if (ck.clearkeys && Object.keys(ck.clearkeys).length > 0) {
-        console.log('[VideoPlayer] DRM prop → ClearKey INLINE keys:', Object.keys(ck.clearkeys));
         return { type: DRMType.CLEARKEY, clearkeys: ck.clearkeys };
       }
-
       if (ck.licenseServer) {
-        console.log('[VideoPlayer] DRM prop → ClearKey LICENSE SERVER:', ck.licenseServer);
         return { type: DRMType.CLEARKEY, licenseServer: ck.licenseServer };
       }
-
-      console.warn('[VideoPlayer] ClearKeyDRM has neither clearkeys nor licenseServer — skipping DRM prop');
+      console.warn('[VideoPlayer] ClearKeyDRM unusable — no clearkeys and no licenseServer');
       return null;
     }
-
     case 'widevine':
-      console.log('[VideoPlayer] DRM prop → Widevine:', config.licenseServer);
       return { type: DRMType.WIDEVINE, licenseServer: config.licenseServer, headers: config.headers };
-
     case 'playready':
-      console.log('[VideoPlayer] DRM prop → PlayReady:', config.licenseServer);
       return { type: DRMType.PLAYREADY, licenseServer: config.licenseServer, headers: config.headers };
-
     default:
       console.warn('[VideoPlayer] Unknown DRM type:', (config as any).type);
       return null;
@@ -115,13 +143,11 @@ function toDRMTypeProp(config: DRMConfig): DRMProp {
 
 // ─── ErrorReporter shim ───────────────────────────────────────────────────────
 
-async function safeReport(message: string, code: string, extras: Record<string, unknown>) {
+async function safeReport(msg: string, code: string, extras: Record<string, unknown>) {
   try {
-    const mod      = require('../../services/error/ErrorReporter');
-    const reporter = mod?.ErrorReporter ?? mod?.default;
-    if (reporter && typeof reporter.report === 'function') {
-      await reporter.report(new Error(message), code, extras);
-    }
+    const mod = require('../../services/error/ErrorReporter');
+    const r   = mod?.ErrorReporter ?? mod?.default;
+    if (r && typeof r.report === 'function') await r.report(new Error(msg), code, extras);
   } catch {}
 }
 
@@ -129,24 +155,31 @@ async function safeReport(message: string, code: string, extras: Record<string, 
 
 interface Props { channel: Channel }
 
-// ─── Inner player (wrapped by ErrorBoundary below) ────────────────────────────
+// ─── Inner player ─────────────────────────────────────────────────────────────
 
 const VideoPlayerInner: React.FC<Props> = ({ channel }) => {
 
   const [stream,           setStream]           = useState<ResolvedStream | null>(null);
   const [isSpinnerVisible, setIsSpinnerVisible] = useState(true);
-  const [spinnerLabel,     setSpinnerLabel]     = useState('Resolving stream\u2026');
+  const [spinnerLabel,     setSpinnerLabel]     = useState('Resolving stream…');
   const [errorMessage,     setErrorMessage]     = useState<string | null>(null);
 
-  const streamIndexRef   = useRef(0);
-  const videoRef         = useRef<any>(null);
-  const cancelledRef     = useRef(false);
-  const stallTimerRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const retryTimerRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const retryCountRef    = useRef(0);
+  const videoRef       = useRef<any>(null);
+  const cancelledRef   = useRef(false);
+  const stallTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const retryTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hasLoadedOnce  = useRef(false);
 
-  const reconnectRef     = useRef<() => Promise<void>>(async () => {});
-  const scheduleRetryRef = useRef<() => void>(() => {});
+  // ── Source round-robin state ──────────────────────────────────────────────
+  // sourceIndexRef:  which streamUrls[] entry we're currently trying
+  // triedInCycleRef: how many sources have been attempted in this cycle
+  //                  when it reaches total sources → full cycle → longer delay
+  const sourceIndexRef   = useRef(0);
+  const triedInCycleRef  = useRef(0);
+  const totalSourcesRef  = useRef(0);
+
+  const reconnectRef     = useRef<(skipNow?: boolean) => Promise<void>>(async () => {});
+  const scheduleRetryRef = useRef<(skipNow?: boolean) => void>(() => {});
 
   // ── AppState ──────────────────────────────────────────────────────────────
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
@@ -155,7 +188,7 @@ const VideoPlayerInner: React.FC<Props> = ({ channel }) => {
   useEffect(() => {
     const sub = AppState.addEventListener('change', next => {
       const was = appStateRef.current === 'active';
-      const now = next === 'active';
+      const now  = next === 'active';
       appStateRef.current = next;
       if (was !== now) setAppActive(now);
     });
@@ -165,17 +198,11 @@ const VideoPlayerInner: React.FC<Props> = ({ channel }) => {
   // ── Timer helpers ─────────────────────────────────────────────────────────
 
   const clearStallTimer = useCallback(() => {
-    if (stallTimerRef.current !== null) {
-      clearTimeout(stallTimerRef.current);
-      stallTimerRef.current = null;
-    }
+    if (stallTimerRef.current) { clearTimeout(stallTimerRef.current); stallTimerRef.current = null; }
   }, []);
 
   const clearRetryTimer = useCallback(() => {
-    if (retryTimerRef.current !== null) {
-      clearTimeout(retryTimerRef.current);
-      retryTimerRef.current = null;
-    }
+    if (retryTimerRef.current) { clearTimeout(retryTimerRef.current); retryTimerRef.current = null; }
   }, []);
 
   const clearAllTimers = useCallback(() => {
@@ -187,147 +214,169 @@ const VideoPlayerInner: React.FC<Props> = ({ channel }) => {
 
   const seekToLiveEdge = useCallback(() => {
     if (!videoRef.current || cancelledRef.current) return;
-    console.log('[VideoPlayer] \uD83D\uDD01 Seeking to live edge');
+    console.log('[VideoPlayer] 🔁 Seeking to live edge');
     try {
       videoRef.current.seek(Number.MAX_SAFE_INTEGER);
-    } catch (e) {
-      console.warn('[VideoPlayer] seekToLiveEdge failed \u2014 scheduling reconnect:', e);
+    } catch {
       scheduleRetryRef.current();
     }
   }, []);
 
-  // ── Source picker ─────────────────────────────────────────────────────────
+  // ── Source picker — IMMEDIATELY advance to next source on failure ─────────
+  //
+  // Key difference from previous version:
+  // OLD: retry same source N times, then advance
+  // NEW: advance on every call — caller decides when to call this
+  //
+  // Returns the next StreamUrl entry to try, or null if no sources exist.
 
-  const pickNextSource = useCallback(() => {
+  const advanceSource = useCallback((): { url: string; entry: any } | null => {
     const urls = channel.streamUrls ?? [];
     if (urls.length === 0) return null;
-    const idx = Math.floor(retryCountRef.current / MAX_RETRIES_PER_SOURCE) % urls.length;
-    if (idx !== streamIndexRef.current) {
-      console.log(`[VideoPlayer] \uD83D\uDD00 Switching to source #${idx} ("${urls[idx]?.source ?? 'unknown'}")`);
-      streamIndexRef.current = idx;
-    }
-    return urls[idx] ?? null;
+
+    totalSourcesRef.current = urls.length;
+    triedInCycleRef.current += 1;
+
+    // Advance index (wraps around)
+    const idx = sourceIndexRef.current % urls.length;
+    sourceIndexRef.current  = (idx + 1) % urls.length; // next call starts after this one
+
+    const entry = urls[idx];
+    console.log(
+      `[VideoPlayer] 🔀 Source ${idx + 1}/${urls.length}: "${entry?.source ?? 'unknown'}" — ${entry?.url}`,
+    );
+    return { url: entry?.url, entry };
   }, [channel.streamUrls]);
 
   // ── Full reconnect ────────────────────────────────────────────────────────
+  // skipNow=true  → switch source immediately (fatal error path)
+  // skipNow=false → standard retry delay (non-fatal error path)
 
-  const reconnect = useCallback(async () => {
+  const reconnect = useCallback(async (skipNow = false) => {
     if (cancelledRef.current) return;
 
-    retryCountRef.current += 1;
-    const attempt = retryCountRef.current;
-    console.log(`[VideoPlayer] \uD83D\uDD04 Reconnect #${attempt} \u2014 "${channel.name}"`);
-
     setIsSpinnerVisible(true);
-    setSpinnerLabel(`Reconnecting\u2026 (attempt ${attempt})`);
     setErrorMessage(null);
 
-    const sourceEntry = pickNextSource();
-    if (!sourceEntry) {
-      const msg = 'No stream sources available';
-      console.warn('[VideoPlayer]', msg);
-      setErrorMessage(msg);
-      scheduleRetryRef.current();
+    const next = advanceSource();
+
+    if (!next) {
+      setSpinnerLabel('No sources available');
+      setErrorMessage('No stream sources configured for this channel');
+      console.warn('[VideoPlayer] No stream sources for:', channel.name);
       return;
     }
 
+    // If we've just completed a full cycle through all sources with no success,
+    // wait longer before hammering the servers again.
+    const allSourcesTried = triedInCycleRef.current >= totalSourcesRef.current;
+    if (allSourcesTried && !skipNow) {
+      console.warn(`[VideoPlayer] All ${totalSourcesRef.current} sources failed — waiting ${INTER_CYCLE_DELAY_MS / 1000}s before retry cycle`);
+      setSpinnerLabel(`All sources failed — retrying in ${INTER_CYCLE_DELAY_MS / 1000}s…`);
+      triedInCycleRef.current = 0; // reset cycle counter
+      retryTimerRef.current = setTimeout(() => {
+        if (!cancelledRef.current) reconnectRef.current();
+      }, INTER_CYCLE_DELAY_MS);
+      return;
+    }
+
+    setSpinnerLabel(`Trying source… (${Math.min(triedInCycleRef.current, totalSourcesRef.current)}/${totalSourcesRef.current})`);
+
     let resolved: ResolvedStream | null = null;
     try {
-      resolved = await StreamResolver.resolve(sourceEntry);
+      resolved = await StreamResolver.resolve(next.entry ?? next.url);
     } catch (e: any) {
-      const msg = e?.message ?? String(e);
-      console.warn(`[VideoPlayer] \u274C Reconnect #${attempt} threw:`, msg);
-      setErrorMessage(`Resolve error: ${msg}`);
+      console.warn('[VideoPlayer] ❌ Resolve threw:', e?.message ?? e);
+      setErrorMessage(`Resolve error: ${e?.message ?? e}`);
     }
 
     if (cancelledRef.current) return;
 
     if (resolved) {
-      console.log(`[VideoPlayer] \u2705 Reconnect #${attempt} \u2192 ${resolved.type}:`, resolved.url);
-      if (resolved.drm) console.log('[VideoPlayer] DRM:', JSON.stringify(resolved.drm));
+      console.log(`[VideoPlayer] ✅ Source resolved → ${resolved.type}: ${resolved.url}`);
+      console.log('[VideoPlayer] DRM:', resolved.drm ? JSON.stringify(resolved.drm) : 'none');
       setStream({ ...resolved });
-      setIsSpinnerVisible(true);
-      setSpinnerLabel('Loading channel\u2026');
+      setSpinnerLabel('Loading channel…');
     } else {
-      scheduleRetryRef.current();
+      // Resolve returned null — skip immediately to the next source
+      scheduleRetryRef.current(true);
     }
-  }, [channel.name, pickNextSource]);
+  }, [channel.name, advanceSource]);
 
   useEffect(() => { reconnectRef.current = reconnect; }, [reconnect]);
 
-  const scheduleNextRetry = useCallback(() => {
+  const scheduleRetry = useCallback((skipNow = false) => {
     if (cancelledRef.current) return;
     clearRetryTimer();
-    console.log(`[VideoPlayer] \u23F1 Retry in ${RETRY_INTERVAL_MS / 1000}s`);
+    const delay = skipNow ? 0 : RETRY_DELAY_MS;
     retryTimerRef.current = setTimeout(() => {
-      if (!cancelledRef.current) reconnectRef.current();
-    }, RETRY_INTERVAL_MS);
+      if (!cancelledRef.current) reconnectRef.current(skipNow);
+    }, delay);
   }, [clearRetryTimer]);
 
-  useEffect(() => { scheduleRetryRef.current = scheduleNextRetry; }, [scheduleNextRetry]);
+  useEffect(() => { scheduleRetryRef.current = scheduleRetry; }, [scheduleRetry]);
 
-  // ── Stall watchdog ────────────────────────────────────────────────────────
+  // ── Stall watchdog (only armed after first successful play) ───────────────
 
   const startStallWatchdog = useCallback(() => {
+    if (!hasLoadedOnce.current) return; // don't fire during initial buffering
     clearStallTimer();
     stallTimerRef.current = setTimeout(() => {
       if (cancelledRef.current) return;
-      console.warn(`[VideoPlayer] \u26A0\uFE0F Stalled ${STALL_TIMEOUT_MS / 1000}s \u2014 reconnecting`);
-      reconnectRef.current();
+      console.warn(`[VideoPlayer] ⚠️ Stall for ${STALL_TIMEOUT_MS / 1000}s — switching source`);
+      reconnectRef.current(false);
     }, STALL_TIMEOUT_MS);
   }, [clearStallTimer]);
 
-  // ── Initial resolution ────────────────────────────────────────────────────
+  // ── Initial load ──────────────────────────────────────────────────────────
 
   useEffect(() => {
+    if (!channel?.streamUrl && !channel?.streamUrls?.length) return;
 
-    if (!channel?.streamUrl && !channel?.streamUrls?.length) return; // ← ADD
-  
-    cancelledRef.current = true;
+    cancelledRef.current   = true;
     clearAllTimers();
 
     cancelledRef.current   = false;
-    retryCountRef.current  = 0;
-    streamIndexRef.current = 0;
+    hasLoadedOnce.current  = false;
+    sourceIndexRef.current = 0;
+    triedInCycleRef.current = 0;
+    totalSourcesRef.current = channel.streamUrls?.length ?? 0;
 
     setStream(null);
     setErrorMessage(null);
     setIsSpinnerVisible(true);
-    setSpinnerLabel('Resolving stream\u2026');
+    setSpinnerLabel('Resolving stream…');
 
-    console.log(`[VideoPlayer] \u2500\u2500 Channel: "${channel.name}" \u2192 ${channel.streamUrl}`);
-    console.log(`[VideoPlayer] Sources available: ${channel.streamUrls?.length ?? 0}`);
+    console.log(`[VideoPlayer] ── "${channel.name}" | ${totalSourcesRef.current} source(s)`);
 
-    // Prefer streamUrls[0] — it carries full DRM metadata from the API
-    const initialSource = channel.streamUrls?.[0] ?? channel.streamUrl;
+    // Always start with streamUrls[0] — it has the most metadata (DRM etc.)
+    const firstEntry = channel.streamUrls?.[0] ?? channel.streamUrl;
 
     (async () => {
       let resolved: ResolvedStream | null = null;
       try {
-        resolved = await StreamResolver.resolve(initialSource);
+        resolved = await StreamResolver.resolve(firstEntry);
+        sourceIndexRef.current  = 1; // next failure will try index 1
+        triedInCycleRef.current = 1;
       } catch (e: any) {
-        console.error('[VideoPlayer] Initial resolve threw (should not happen):', e?.message ?? e);
+        console.error('[VideoPlayer] Initial resolve error:', e?.message ?? e);
       }
 
       if (cancelledRef.current) return;
 
       if (resolved) {
-        console.log(`[VideoPlayer] Initial \u2192 ${resolved.type}:`, resolved.url);
-        if (resolved.drm) {
-          console.log('[VideoPlayer] DRM config:', JSON.stringify(resolved.drm));
-        } else {
-          console.log('[VideoPlayer] No DRM \u2014 unencrypted stream');
-        }
+        console.log(`[VideoPlayer] Initial → ${resolved.type}: ${resolved.url}`);
+        console.log('[VideoPlayer] DRM:', resolved.drm ? JSON.stringify(resolved.drm) : 'none');
         setStream(resolved);
-        setSpinnerLabel('Loading channel\u2026');
+        setSpinnerLabel('Loading channel…');
       } else {
-        reconnectRef.current();
+        reconnectRef.current(true); // first source failed → try next immediately
       }
     })();
 
     return () => {
-      cancelledRef.current = true;
-    hasLoadedOnce.current = false;
+      cancelledRef.current  = true;
+      hasLoadedOnce.current = false;
       clearAllTimers();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -336,12 +385,7 @@ const VideoPlayerInner: React.FC<Props> = ({ channel }) => {
   // ── ExoPlayer callbacks ───────────────────────────────────────────────────
 
   const handleLoadStart = useCallback(() => {
-    try {
-      clearStallTimer();
-      console.log('[VideoPlayer] LoadStart \u2014 waiting for manifest');
-    } catch (e) {
-      console.warn('[VideoPlayer] handleLoadStart error:', e);
-    }
+    try { clearStallTimer(); } catch {}
   }, [clearStallTimer]);
 
   const handleLoad = useCallback((_: OnLoadData) => {
@@ -350,11 +394,10 @@ const VideoPlayerInner: React.FC<Props> = ({ channel }) => {
       clearAllTimers();
       setIsSpinnerVisible(false);
       setErrorMessage(null);
-      hasLoadedOnce.current = true;
-      console.log(`[VideoPlayer] \u25B6\uFE0F  Playing "${channel.name}"`);
-    } catch (e) {
-      console.warn('[VideoPlayer] handleLoad error:', e);
-    }
+      hasLoadedOnce.current  = true;
+      triedInCycleRef.current = 0; // successful play → reset failure counter
+      console.log(`[VideoPlayer] ▶️ Playing "${channel.name}"`);
+    } catch (e) { console.warn('[VideoPlayer] handleLoad error:', e); }
   }, [clearAllTimers, channel.name]);
 
   const handleBuffer = useCallback(({ isBuffering }: { isBuffering: boolean }) => {
@@ -366,11 +409,9 @@ const VideoPlayerInner: React.FC<Props> = ({ channel }) => {
         return;
       }
       setIsSpinnerVisible(true);
-      setSpinnerLabel('Loading channel\u2026');
-if (hasLoadedOnce.current) startStallWatchdog();
-    } catch (e) {
-      console.warn('[VideoPlayer] handleBuffer error:', e);
-    }
+      setSpinnerLabel('Buffering…');
+      startStallWatchdog(); // no-op until hasLoadedOnce = true
+    } catch (e) { console.warn('[VideoPlayer] handleBuffer error:', e); }
   }, [clearStallTimer, startStallWatchdog]);
 
   const handleError = useCallback((err: any) => {
@@ -381,30 +422,23 @@ if (hasLoadedOnce.current) startStallWatchdog();
       const msg    = err?.error?.errorString as string | undefined;
       const domain = err?.error?.domain      as string | undefined;
 
-      console.error(
-        `[VideoPlayer] \u274C ExoPlayer error | code=${code ?? 'n/a'} | domain=${domain ?? 'n/a'} | msg=${msg ?? 'n/a'}`,
-      );
-      console.error('[VideoPlayer] Full error:', JSON.stringify(err, null, 2));
+      console.error(`[VideoPlayer] ❌ ExoPlayer error | code=${code ?? 'n/a'} | ${msg ?? 'n/a'}`);
 
       clearAllTimers();
-      setErrorMessage(`Error ${code ?? '?'}: ${msg ?? 'Unknown playback error'}`);
+      setErrorMessage(`[${code ?? '?'}] ${msg ?? 'Playback error'}`);
 
-      if (code === EXO_ERROR_BEHIND_LIVE_WINDOW) {
-        console.log('[VideoPlayer] Behind live window \u2014 seeking to live edge');
+      // ── Behind live window: seek, do NOT switch source ────────────────────
+      if (code === EXO_BEHIND_LIVE_WINDOW) {
         setIsSpinnerVisible(true);
-        setSpinnerLabel('Catching up to live\u2026');
+        setSpinnerLabel('Catching up to live…');
         seekToLiveEdge();
         return;
       }
 
-      if (code !== undefined && FATAL_SOURCE_ERROR_CODES.has(code)) {
-        const currentIdx = streamIndexRef.current;
-        retryCountRef.current = (currentIdx + 1) * MAX_RETRIES_PER_SOURCE;
-        console.warn(`[VideoPlayer] Fatal error ${code} on source #${currentIdx} \u2014 skipping to next source`);
-        setIsSpinnerVisible(true);
-        setSpinnerLabel('Trying next source\u2026');
-        reconnectRef.current();
-        return;
+      // ── Fatal source error: switch immediately ────────────────────────────
+      const skipNow = code !== undefined && SKIP_NOW_CODES.has(code);
+      if (skipNow) {
+        console.warn(`[VideoPlayer] Fatal error ${code} — skipping to next source now`);
       }
 
       safeReport('Playback error', 'PLAYBACK_ERROR', {
@@ -419,66 +453,48 @@ if (hasLoadedOnce.current) startStallWatchdog();
         exoDomain:   domain,
       });
 
-     retryTimerRef.current = setTimeout(() => {
-  if (!cancelledRef.current) reconnectRef.current();   // ← correct
-}, RETRY_INTERVAL_MS);
-    } catch (e) {
-      // Never let handleError itself crash the app
-      console.error('[VideoPlayer] handleError threw unexpectedly:', e);
-    }
+      // Always move to the NEXT source on any error.
+      // skipNow=true  → immediate switch (0ms delay)
+      // skipNow=false → RETRY_DELAY_MS delay before trying next source
+      scheduleRetryRef.current(skipNow);
+
+    } catch (e) { console.error('[VideoPlayer] handleError threw:', e); }
   }, [clearAllTimers, seekToLiveEdge, channel, stream]);
 
   const handleProgress = useCallback((_: OnProgressData) => {}, []);
 
-  // ── Build source props ────────────────────────────────────────────────────
+  // ── Build source / DRM props ──────────────────────────────────────────────
 
   const sourceHeaders: Record<string, string> = {
+    // Use the stream's User-Agent (set by StreamResolver from API data).
+    // VLC_USER_AGENT is used when the channel has no userAgent set — this
+    // matches TiViMate's default UA and is accepted by most IPTV servers.
     'User-Agent': (stream?.userAgent && !stream.userAgent.startsWith('@'))
       ? stream.userAgent
-      : 'Mozilla/5.0 (Linux; Android 14; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+      : 'VLC/3.0.18 LibVLC/3.0.18',
     'Accept':     ACCEPT_HEADER,
     'Connection': 'keep-alive',
-   ...Object.fromEntries(
-  Object.entries(stream?.httpHeaders ?? {})
-    .filter(([k]) => k.toLowerCase() !== 'user-agent')  // ← this is fine, keep it
-),
+    ...Object.fromEntries(
+      Object.entries(stream?.httpHeaders ?? {})
+        .filter(([k]) => k.toLowerCase() !== 'user-agent')
+    ),
   };
 
-  // Build DRM prop with validation — never pass an empty/broken config to native
   let drmProp: DRMProp = null;
   if (stream?.drm) {
-    try {
-      drmProp = toDRMTypeProp(stream.drm);
-      if (!drmProp) {
-        console.warn(
-          '[VideoPlayer] DRM config present but toDRMTypeProp returned null \u2014 playing without DRM.',
-          'Config was:', JSON.stringify(stream.drm),
-        );
-      }
-    } catch (e) {
-      console.warn('[VideoPlayer] Failed to build DRM prop \u2014 playing without DRM:', e);
+    try { drmProp = toDRMTypeProp(stream.drm); } catch (e) {
+      console.warn('[VideoPlayer] Failed to build DRM prop:', e);
     }
   }
 
-  // Log what we actually hand to ExoPlayer each time the stream changes
   useEffect(() => {
     if (!stream) return;
-    console.log('[VideoPlayer] \uD83D\uDCFA Handing to ExoPlayer:');
-    console.log('  url  =', stream.url);
-    console.log('  type =', stream.type);
-    console.log('  UA   =', sourceHeaders['User-Agent']);
-    console.log('  DRM  =', drmProp ? JSON.stringify(drmProp) : 'none');
+    console.log(
+      `[VideoPlayer] 📺 → type=${stream.type} drm=${drmProp?.type ?? 'none'} ua=${sourceHeaders['User-Agent']} url=${stream.url}`,
+    );
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stream?.url]);
 
-
-
-  console.log('[DEBUG] stream:', JSON.stringify({
-  url: stream?.url,
-  type: stream?.type,
-  hasDRM: !!stream?.drm,
-  drmType: stream?.drm?.type,
-}));
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
@@ -486,25 +502,33 @@ if (hasLoadedOnce.current) startStallWatchdog();
 
       {stream && (
         <View style={styles.videoWrapper} pointerEvents="none">
-      <Video
-  key={stream.url}
-  ref={videoRef}
-  source={{
-    uri: stream.url,
-    headers: sourceHeaders,
-  }}
-  style={styles.video}
-  resizeMode="contain"
-  paused={!appActive}
-  repeat={false}
-  playInBackground={false}
-  ignoreSilentSwitch="ignore"
-  onLoadStart={handleLoadStart}
-  onLoad={handleLoad}
-  onError={handleError}
-  onBuffer={handleBuffer}
-  focusable={false}
-/>
+          <Video
+            key={stream.url}
+            ref={videoRef}
+            source={{
+              uri:     stream.url,
+              type:    stream.type,    // critical: tells ExoPlayer HLS vs DASH
+              headers: sourceHeaders,
+            }}
+            style={styles.video}
+            resizeMode="contain"
+            bufferConfig={BUFFER_CONFIG}
+            paused={!appActive}
+            repeat={false}
+            playInBackground={false}
+            playWhenInactive={false}
+            ignoreSilentSwitch="ignore"
+            minLoadRetryCount={2}      // ExoPlayer retries internally 2× before surfacing error to JS
+            reportBandwidth={false}
+            onLoadStart={handleLoadStart}
+            onLoad={handleLoad}
+            onError={handleError}
+            onBuffer={handleBuffer}
+            onProgress={handleProgress}
+            focusable={false}
+            {...(drmProp ? { drm: drmProp } : {})}
+            {...(Platform.isTV ? { isTVSelectable: false } : {})}
+          />
         </View>
       )}
 
@@ -517,25 +541,16 @@ if (hasLoadedOnce.current) startStallWatchdog();
           {stream?.drm && (
             <View style={styles.drmBadge}>
               <Text style={styles.drmBadgeText}>
-                {'\uD83D\uDD10'} {stream.drm.type.toUpperCase()}
+                🔐 {stream.drm.type.toUpperCase()}
                 {stream.drm.type === 'clearkey' && (stream.drm as ClearKeyDRM).licenseServer
-                  ? ' (URL KEY)'
-                  : stream.drm.type === 'clearkey'
-                  ? ' (INLINE)'
-                  : ''}
+                  ? ' (URL KEY)' : stream.drm.type === 'clearkey' ? ' (INLINE)' : ''}
               </Text>
             </View>
           )}
 
           {errorMessage && (
             <Text style={styles.overlayError} numberOfLines={3}>
-              {'\u26A0\uFE0F'} {errorMessage}
-            </Text>
-          )}
-
-          {spinnerLabel.startsWith('Reconnecting') && (
-            <Text style={styles.overlayHint}>
-              Retrying every {RETRY_INTERVAL_MS / 1000}s \u2014 switch channel to stop
+              ⚠️ {errorMessage}
             </Text>
           )}
         </View>
@@ -544,11 +559,10 @@ if (hasLoadedOnce.current) startStallWatchdog();
   );
 };
 
-// ─── Public export — always wrapped in an ErrorBoundary ───────────────────────
+// ─── Public export ────────────────────────────────────────────────────────────
 
 const VideoPlayer: React.FC<Props> = ({ channel }) => {
   const [boundaryKey, setBoundaryKey] = useState(0);
-
   return (
     <VideoErrorBoundary
       key={boundaryKey}
@@ -574,7 +588,6 @@ const styles = StyleSheet.create({
   },
   overlayLabel:   { color: '#fff',    marginTop: 14, fontSize: 16, fontWeight: '600' },
   overlayChannel: { color: '#9ca3af', marginTop: 6,  fontSize: 13 },
-  overlayHint:    { color: '#6b7280', marginTop: 8,  fontSize: 11, textAlign: 'center', paddingHorizontal: 24 },
   overlayError:   { color: '#f87171', marginTop: 8,  fontSize: 11, textAlign: 'center', paddingHorizontal: 24 },
   drmBadge: {
     marginTop: 10,

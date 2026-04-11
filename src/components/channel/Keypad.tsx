@@ -168,27 +168,22 @@ const styles = StyleSheet.create({
     fontSize: 32,
   },
 
-  keypadGrid: {
-    padding: 10,
-    gap: 6,
-  },
-  row: {
-    flexDirection: 'row',
-    gap: 6,
-  },
+keypadGrid: {
+  padding: 12,
+},
+row: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  marginBottom: 8,
+},
 
   // ── Key button ───────────────────────────────────────────────────────────────
-  key: {
-    flex: 1,
-    backgroundColor: 'rgba(55,65,81,0.8)',
-    paddingVertical: 11,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-    // Transparent border reserves space so focus ring doesn't shift layout
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
+ key: {
+  flex: 1,
+  marginHorizontal: 4, // 👈 spacing
+  paddingVertical: 14, // 👈 bigger buttons
+  borderRadius: 10,
+},
   keyGo: {
     backgroundColor: '#16a34a',
   },
@@ -196,10 +191,11 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(239,68,68,0.8)',
   },
   // TV focus ring — bright white border, user never loses their position
-  keyFocused: {
-    borderColor: '#60a5fa',
-    backgroundColor: 'rgba(96,165,250,0.25)',
-  },
+ keyFocused: {
+  borderColor: '#ff3b30', // 🔴 RED (your requirement)
+  backgroundColor: 'rgba(255,59,48,0.2)',
+  transform: [{ scale: 1.05 }],
+},
   keyText: {
     color: '#e5e7eb',
     fontSize: 18,

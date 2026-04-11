@@ -99,13 +99,15 @@ const SimpleUIScreen: React.FC<Props> = ({ navigation }) => {
   };
 
   // ─── Responsive sizing ──────────────────────────────────────────────────
-  const channelListWidth = isLandscape
-    ? Math.min(Math.floor(width * 0.38), 340)
-    : width - 32;
+ const GAP = 16;
 
-  const keypadWidth = isLandscape
-    ? Math.min(Math.floor(width * 0.26), 240)
-    : width - 32;
+const channelListWidth = isLandscape
+  ? Math.min(width * 0.5, 420)
+  : width - 24;
+
+const keypadWidth = isLandscape
+  ? Math.min(width * 0.28, 260)
+  : width - 24;
 
   const topBarHeight = isTV ? 64 : isLandscape ? 48 : 60;
 
@@ -195,39 +197,39 @@ const SimpleUIScreen: React.FC<Props> = ({ navigation }) => {
           </View>
 
           {/* ── Body panels ── */}
-          {isLandscape ? (
-            // LANDSCAPE: channel list left, keypad right, never overlapping
-            <View style={[styles.bodyLandscape, { top: topBarHeight }]}>
-              <View style={[styles.channelListWrapper, { width: channelListWidth }]}>
-                <ChannelList
-                  channels={filteredChannels}
-                  currentChannel={currentChannel}
-                  onChannelSelect={handleChannelChange}
-                  channelPage={channelPage}
-                  setChannelPage={setChannelPage}
-                  onActivity={() => resetTimer(true)}
-                />
-              </View>
-              <View style={styles.bodySpacer} />
-              <View style={[styles.keypadWrapper, { width: keypadWidth }]}>
-                <Keypad onChannelSelect={handleChannelChange} onActivity={() => resetTimer(true)} />
-              </View>
-            </View>
-          ) : (
-            // PORTRAIT: channel list only, full-width (no overlap ever)
-            <View style={[styles.bodyPortrait, { top: topBarHeight }]}>
-              <View style={[styles.channelListWrapper, { width: channelListWidth }]}>
-                <ChannelList
-                  channels={filteredChannels}
-                  currentChannel={currentChannel}
-                  onChannelSelect={handleChannelChange}
-                  channelPage={channelPage}
-                  setChannelPage={setChannelPage}
-                  onActivity={() => resetTimer(true)}
-                />
-              </View>
-            </View>
-          )}
+         {isLandscape ? (
+  <View style={styles.bodyLandscape}>
+    <View style={styles.channelListWrapperLandscape}>
+      <ChannelList
+        channels={filteredChannels}
+        currentChannel={currentChannel}
+        onChannelSelect={handleChannelChange}
+        channelPage={channelPage}
+        setChannelPage={setChannelPage}
+        onActivity={() => resetTimer(true)}
+      />
+    </View>
+
+    <View style={styles.keypadWrapperLandscape}>
+      <Keypad
+        onChannelSelect={handleChannelChange}
+        onActivity={() => resetTimer(true)}
+      />
+    </View>
+  </View>
+) : (
+  // PORTRAIT → ONLY CHANNEL LIST FULL SCREEN
+  <View style={styles.bodyPortrait}>
+    <ChannelList
+      channels={filteredChannels}
+      currentChannel={currentChannel}
+      onChannelSelect={handleChannelChange}
+      channelPage={channelPage}
+      setChannelPage={setChannelPage}
+      onActivity={() => resetTimer(true)}
+    />
+  </View>
+)}
         </View>
       )}
     </Pressable>
@@ -312,10 +314,11 @@ const styles = StyleSheet.create({
     fontSize: 20,
   },
   channelName: {
-    fontSize: 11,
-    color: '#9ca3af',
-    maxWidth: 140,
-  },
+  fontSize: 11,
+  color: '#9ca3af',
+  maxWidth: 120,
+  flexShrink: 1, // 👈 prevents overflow
+},
   settingsButton: {
     backgroundColor: 'rgba(55,65,81,0.8)',
     padding: 8,
@@ -325,23 +328,31 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 10,
   },
-  bodyLandscape: {
-    position: 'absolute',
-    left: 12,
-    right: 12,
-    bottom: 12,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-  },
-  bodySpacer: {
-    flex: 1,
-  },
+ bodyLandscape: {
+  position: 'absolute',
+  top: 64,
+  left: 12,
+  right: 12,
+  bottom: 12,
+  flexDirection: 'row',
+  gap: 12,
+},
+channelListWrapperLandscape: {
+  flex: 1,           // 👈 takes full height
+},
+keypadWrapperLandscape: {
+  width: 260,
+  height: '100%',    // 👈 full height keypad
+},
+
+  
   bodyPortrait: {
     position: 'absolute',
+    top:64,
     left: 12,
     right: 12,
     bottom: 12,
-    alignItems: 'flex-start',
+ alignItems: 'center',
   },
   // Transparent full-screen overlay that sits on top of the video so taps
   // are never swallowed by react-native-video's internal touch handler.
@@ -355,9 +366,12 @@ const styles = StyleSheet.create({
     zIndex: 2,          // always on top
   },
   channelListWrapper: {
-    maxHeight: '85%',
-  },
-  keypadWrapper: {},
+  maxHeight: '80%',
+  minHeight: 200,
+},
+  keypadWrapper: {
+  minHeight: 180,
+},
 });
 
 export default SimpleUIScreen;

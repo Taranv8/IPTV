@@ -2,7 +2,7 @@
 
 export const APP_CONFIG = {
   APP_NAME: 'IPTV Player',
-API_BASE_URL: 'https://iptv-backend-production-9adb.up.railway.app/channels',
+API_BASE_URL: 'https://iptv-backend-production-9adb.up.railway.app',
   DEFAULT_CHANNEL: 1,
   SPLASH_DURATION: 3000,
   UI_SELECTION_COUNTDOWN: 5,
