@@ -13,7 +13,7 @@ import { RootStackParamList } from '../../types/navigation';
 import { useChannelContext } from '../../context/ChannelContext';
 import { APP_CONFIG } from '../../constants/config';
 import VideoPlayer from '../../components/player/VideoPlayer';
-import Keypad from '../../components/channel/Keypad';
+// import Keypad from '../../components/channel/Keypad';
 import ChannelList from '../../components/channel/ChannelList';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useOrientation } from '../../hooks/useOrientation';
@@ -211,10 +211,10 @@ const keypadWidth = isLandscape
     </View>
 
     <View style={styles.keypadWrapperLandscape}>
-      <Keypad
+      {/* <Keypad
         onChannelSelect={handleChannelChange}
         onActivity={() => resetTimer(true)}
-      />
+      /> */}
     </View>
   </View>
 ) : (

@@ -6,8 +6,9 @@ import {
   TouchableOpacity,
   Animated,
   useWindowDimensions,
-  ScrollView,
   Platform,
+  Easing,
+   DimensionValue,
 } from 'react-native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../../types/navigation';
@@ -16,374 +17,673 @@ import { useSettings } from '../../context/SettingsContext';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
 type SelectionScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Selection'>;
+interface Props { navigation: SelectionScreenNavigationProp; }
 
-interface Props {
-  navigation: SelectionScreenNavigationProp;
-}
+// ─── Floating Star ────────────────────────────────────────────────────────────
+const FloatingStar: React.FC<{
+  size: number; color: string;
+  top: DimensionValue;
+left?: DimensionValue;
+right?: DimensionValue;
+ delay?: number;
+}> = ({ size, color, top, left, right, delay = 0 }) => {
+  const floatY = useRef(new Animated.Value(0)).current;
+  const rotate = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.delay(delay),
+        Animated.parallel([
+          Animated.sequence([
+            Animated.timing(floatY, { toValue: -10, duration: 1800, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+            Animated.timing(floatY, { toValue: 0, duration: 1800, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+          ]),
+          Animated.timing(rotate, { toValue: 1, duration: 3600, easing: Easing.linear, useNativeDriver: true }),
+        ]),
+      ])
+    ).start();
+  }, []);
+  const rot = rotate.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
+  return (
+    <Animated.View
+      style={{ position: 'absolute', top, left, right, opacity: 0.65, transform: [{ translateY: floatY }, { rotate: rot }] }}
+      pointerEvents="none"
+    >
+      <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ position: 'absolute', width: size, height: size * 0.28, backgroundColor: color, borderRadius: size * 0.14 }} />
+        <View style={{ position: 'absolute', width: size * 0.28, height: size, backgroundColor: color, borderRadius: size * 0.14 }} />
+        <View style={{ position: 'absolute', width: size * 0.7, height: size * 0.7 * 0.28, backgroundColor: color, borderRadius: size * 0.14, transform: [{ rotate: '45deg' }] }} />
+        <View style={{ position: 'absolute', width: size * 0.7 * 0.28, height: size * 0.7, backgroundColor: color, borderRadius: size * 0.14, transform: [{ rotate: '45deg' }] }} />
+      </View>
+    </Animated.View>
+  );
+};
 
+// ─── Pulse Dot ────────────────────────────────────────────────────────────────
+const PulseDot: React.FC<{ color: string; size: number; style?: object }> = ({ color, size, style }) => {
+  const pulse = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 1.7, duration: 850, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 1, duration: 850, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+      ])
+    ).start();
+  }, []);
+  return <Animated.View style={[{ width: size, height: size, borderRadius: size / 2, backgroundColor: color, transform: [{ scale: pulse }] }, style]} />;
+};
+
+// ─── Main Screen ──────────────────────────────────────────────────────────────
 const SelectionScreen: React.FC<Props> = ({ navigation }) => {
   const { uiMode, setUIMode } = useSettings();
   const { width, height } = useWindowDimensions();
 
-  const isPortrait = height >= width;
-  const isSmallScreen = width < 700;
+  const isPortrait  = height >= width;
+  // isPhone: true when the shorter screen dimension is phone-sized
+  const isPhone     = Math.min(width, height) < 500;
+  const isLandPhone = !isPortrait && isPhone;   // landscape phone e.g. 720×360
+  const isPortPhone =  isPortrait && isPhone;   // portrait phone  e.g. 390×844
 
   const [selectedUI, setSelectedUI] = useState<'simple' | 'advanced'>(uiMode);
-  const [focusedUI, setFocusedUI] = useState<'simple' | 'advanced' | null>(uiMode);
-  const [countdown, setCountdown] = useState(APP_CONFIG.UI_SELECTION_COUNTDOWN);
+  const [focusedUI,  setFocusedUI]  = useState<'simple' | 'advanced' | null>(uiMode);
+const [countdown, setCountdown] = useState(() => APP_CONFIG.UI_SELECTION_COUNTDOWN);
+  const TOTAL = APP_CONFIG.UI_SELECTION_COUNTDOWN;
 
-  const scaleAnim = useRef(new Animated.Value(1)).current;
+  // ── Animations ──
+  const masterFade  = useRef(new Animated.Value(0)).current;
+  const titleSlide  = useRef(new Animated.Value(-36)).current;
+  const card1Slide  = useRef(new Animated.Value(50)).current;
+  const card2Slide  = useRef(new Animated.Value(50)).current;
+  const bottomSlide = useRef(new Animated.Value(36)).current;
+  const iconBounce1 = useRef(new Animated.Value(0)).current;
+  const iconBounce2 = useRef(new Animated.Value(0)).current;
+  const card1Scale  = useRef(new Animated.Value(1)).current;
+  const card2Scale  = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(masterFade, { toValue: 1, duration: 450, useNativeDriver: true }),
+      Animated.spring(titleSlide, { toValue: 0, tension: 80, friction: 10, useNativeDriver: true }),
+      Animated.sequence([Animated.delay(140), Animated.spring(card1Slide, { toValue: 0, tension: 70, friction: 10, useNativeDriver: true })]),
+      Animated.sequence([Animated.delay(230), Animated.spring(card2Slide, { toValue: 0, tension: 70, friction: 10, useNativeDriver: true })]),
+      Animated.sequence([Animated.delay(360), Animated.spring(bottomSlide, { toValue: 0, tension: 70, friction: 10, useNativeDriver: true })]),
+    ]).start();
+
+    const bounceLoop = (anim: Animated.Value, delay: number) =>
+      Animated.loop(
+        Animated.sequence([
+          Animated.delay(delay),
+          Animated.timing(anim, { toValue: -10, duration: 340, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+          Animated.timing(anim, { toValue: 0,   duration: 300, easing: Easing.bounce,           useNativeDriver: true }),
+          Animated.delay(2000),
+        ])
+      ).start();
+
+    bounceLoop(iconBounce1, 700);
+    bounceLoop(iconBounce2, 1200);
+  }, []);
 
   useEffect(() => {
     if (countdown > 0) {
-      const timer = setTimeout(() => setCountdown(countdown - 1), 1000);
-      return () => clearTimeout(timer);
+      const t = setTimeout(() => setCountdown(c => c - 1), 1000);
+      return () => clearTimeout(t);
     }
     handleNavigate();
   }, [countdown]);
 
   const handleNavigate = async () => {
     await setUIMode(selectedUI);
-
-    if (selectedUI === 'simple') {
-      navigation.replace('SimpleUI', {});
-    } else {
-      navigation.replace('AdvancedUI');
-    }
+    selectedUI === 'simple' ? navigation.replace('SimpleUI', {}) : navigation.replace('AdvancedUI');
   };
+
+  const popCard = (scale: Animated.Value) =>
+    Animated.sequence([
+      Animated.timing(scale, { toValue: 0.94, duration: 80, useNativeDriver: true }),
+      Animated.spring(scale,  { toValue: 1,    tension: 220, friction: 7, useNativeDriver: true }),
+    ]).start();
 
   const handleSelect = (mode: 'simple' | 'advanced') => {
     setSelectedUI(mode);
     setFocusedUI(mode);
     setCountdown(APP_CONFIG.UI_SELECTION_COUNTDOWN);
-
-    Animated.sequence([
-      Animated.timing(scaleAnim, {
-        toValue: 1.04,
-        duration: 100,
-        useNativeDriver: true,
-      }),
-      Animated.timing(scaleAnim, {
-        toValue: 1,
-        duration: 100,
-        useNativeDriver: true,
-      }),
-    ]).start();
+    popCard(mode === 'simple' ? card1Scale : card2Scale);
   };
 
-const cardWidth = isPortrait
-  ? '100%'
-  : Math.min(320, width * 0.40); 
-  const descSize = isSmallScreen ? 14 : 16;
-  const iconSize = isSmallScreen ? 64 : 80;
-const titleSize = isSmallScreen ? 28 : 40;
+  // ── Responsive token table ─────────────────────────────────────────────────
+  //   isLandPhone  = landscape phone (most constrained on HEIGHT)
+  //   isPortPhone  = portrait phone  (most constrained on WIDTH)
+  //   otherwise    = tablet / TV
+
+  const R = {
+    headerPT:    isLandPhone ? 8  : isPortPhone ? 14 : 26,
+    headerPB:    isLandPhone ? 4  : isPortPhone ? 8  : 10,
+    badgeMB:     isLandPhone ? 3  : isPortPhone ? 6  : 10,
+    badgeFz:     isLandPhone ? 9  : 11,
+    titleFz:     isLandPhone ? 18 : isPortPhone ? 23 : 36,
+    showSub:     !isLandPhone,
+    subFz:       isPortPhone ? 12 : 14,
+    subMT:       isPortPhone ? 3  : 6,
+
+    iconCircleW: isLandPhone ? 44 : isPortPhone ? 56 : 74,
+    iconSz:      isLandPhone ? 23 : isPortPhone ? 29 : 44,
+    iconMB:      isLandPhone ? 5  : isPortPhone ? 8  : 14,
+
+    cardPadV:    isLandPhone ? 8  : isPortPhone ? 12 : 18,
+    cardPadH:    isLandPhone ? 10 : isPortPhone ? 14 : 18,
+    // portrait-mode gap between card1 and VS divider
+    card1MB:     isPortPhone ? 6  : isLandPhone ? 0 : 10,
+    cardTitleFz: isLandPhone ? 14 : isPortPhone ? 17 : 20,
+    cardDescFz:  isLandPhone ? 11 : isPortPhone ? 12 : 13,
+    cardDescMB:  isLandPhone ? 5  : isPortPhone ? 8  : 14,
+    cardDescLine:isLandPhone ? 1  : 2,
+    cardDescTxt: (full: string, short: string) => isLandPhone ? short : full,
+
+    vsBubbleW:   isLandPhone ? 26 : isPortPhone ? 28 : 34,
+    vsTextFz:    isLandPhone ? 9  : isPortPhone ? 9  : 11,
+
+    ringSize:    isLandPhone ? 42 : isPortPhone ? 52 : 66,
+    ringNumFz:   isLandPhone ? 16 : isPortPhone ? 19 : 23,
+    ringLblFz:   isLandPhone ? 7  : isPortPhone ? 9  : 10,
+    ringMR:      isLandPhone ? 10 : 14,
+
+    bPadV:       isLandPhone ? 7  : isPortPhone ? 9  : 13,
+    bPadH:       isLandPhone ? 12 : isPortPhone ? 14 : 22,
+    bMargH:      isLandPhone ? 10 : isPortPhone ? 12 : 20,
+    bMargB:      isLandPhone ? 8  : isPortPhone ? 10 : 16,
+    redirFz:     isLandPhone ? 11 : isPortPhone ? 12 : 14,
+    hintFz:      isPortPhone ? 10 : 11,
+    showHint:    !isLandPhone,
+    showRemote:  !isLandPhone,
+    remoteIconSz:isPortPhone ? 17 : 21,
+    remoteFz:    isPortPhone ? 9  : 10,
+  };
+
   return (
-    <View style={styles.container}>
-      <View style={styles.gridBackground} />
+    <Animated.View style={[styles.root, { opacity: masterFade }]}>
 
-      <ScrollView
-        contentContainerStyle={[
-          styles.scrollContent,
-          isPortrait ? styles.scrollContentPortrait : styles.scrollContentLandscape,
-        ]}
-        bounces={false}
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.content}>
-          <Text
-            style={[
-              styles.title,
-              { fontSize: titleSize },
-            ]}
-            numberOfLines={2}
-            adjustsFontSizeToFit
-            minimumFontScale={0.8}
-          >
-            Choose Your Experience
-          </Text>
+      {/* ── BG dots ── */}
+      <View style={styles.bgGrid} pointerEvents="none">
+        {Array.from({ length: 6 }).map((_, r) =>
+          Array.from({ length: 10 }).map((__, c) => (
+            <View key={`${r}-${c}`} style={[styles.bgDot, { top: r * 80 + 20, left: c * 80 + 16 }]} />
+          ))
+        )}
+      </View>
 
-          <Text
-            style={[
-              styles.description,
-              { fontSize: descSize },
-            ]}
-            numberOfLines={3}
-            adjustsFontSizeToFit
-            minimumFontScale={0.8}
-          >
-            Select the interface that suits you best
-          </Text>
+      {/* ── Stars (not in landscape phone — no room) ── */}
+      {!isLandPhone && (
+        <>
+          <FloatingStar size={isPortPhone ? 14 : 24} color="#FFD700" top="6%"  left="4%"  delay={0}   />
+          <FloatingStar size={isPortPhone ? 11 : 17} color="#00F5FF" top="9%"  right="5%" delay={500} />
+          <FloatingStar size={isPortPhone ? 12 : 19} color="#FF4757" top="78%" left="3%"  delay={900} />
+          <FloatingStar size={isPortPhone ? 9  : 13} color="#A29BFE" top="75%" right="4%" delay={300} />
+        </>
+      )}
 
-          <View
-            style={[
-              styles.optionsContainer,
-              isPortrait ? styles.optionsContainerPortrait : styles.optionsContainerLandscape,
-            ]}
-          >
-            <TouchableOpacity
-              focusable
-              hasTVPreferredFocus={selectedUI === 'simple'}
-              onPress={() => handleSelect('simple')}
-              onFocus={() => setFocusedUI('simple')}
-              onBlur={() => setFocusedUI(null)}
-              activeOpacity={0.8}
-              style={[
-  styles.option,
-  { width: cardWidth },
-  !isPortrait && { marginHorizontal: 12 }, // 👈 adds gap in landscape
-  selectedUI === 'simple' && styles.optionSelected,
-  focusedUI === 'simple' && styles.optionFocused,
-]}
-            >
-              <View style={styles.optionGlow} />
-              <Icon name="television" size={iconSize} color="#fff" style={styles.optionIcon} />
-              <Text
-                style={[
-                  styles.optionTitle,
-                  { fontSize: isSmallScreen ? 20 : 24 },
-                ]}
-                numberOfLines={1}
-                adjustsFontSizeToFit
-                minimumFontScale={0.8}
-              >
-                Simple UI
-              </Text>
-              <Text
-                style={[
-                  styles.optionDescription,
-                  { fontSize: isSmallScreen ? 13 : 14 },
-                ]}
-                numberOfLines={4}
-                ellipsizeMode="tail"
-              >
-                Classic TV experience like DishTV with instant channel switching and numeric keypad
-              </Text>
-
-              {selectedUI === 'simple' && (
-                <View style={styles.selectedIndicator}>
-                  <View style={styles.selectedDot} />
-                </View>
-              )}
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              focusable
-              onPress={() => handleSelect('advanced')}
-              onFocus={() => setFocusedUI('advanced')}
-              onBlur={() => setFocusedUI(null)}
-              activeOpacity={0.8}
-              style={[
-                styles.option,
-                { width: cardWidth },
-                selectedUI === 'advanced' && styles.optionSelectedAdvanced,
-                focusedUI === 'advanced' && styles.optionFocused,
-              ]}
-            >
-              <View style={styles.optionGlow} />
-              <Icon name="grid" size={iconSize} color="#fff" style={styles.optionIcon} />
-              <Text
-                style={[
-                  styles.optionTitle,
-                  { fontSize: isSmallScreen ? 20 : 24 },
-                ]}
-                numberOfLines={1}
-                adjustsFontSizeToFit
-                minimumFontScale={0.8}
-              >
-                Advanced UI
-              </Text>
-              <Text
-                style={[
-                  styles.optionDescription,
-                  { fontSize: isSmallScreen ? 13 : 14 },
-                ]}
-                numberOfLines={4}
-                ellipsizeMode="tail"
-              >
-                Modern grid interface with visual thumbnails for easy browsing and discovery
-              </Text>
-
-              {selectedUI === 'advanced' && (
-                <View style={styles.selectedIndicator}>
-                  <View style={[styles.selectedDot, styles.selectedDotAdvanced]} />
-                </View>
-              )}
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.countdownContainer}>
-            <Text
-              style={[
-                styles.countdownText,
-                { fontSize: isSmallScreen ? 18 : 24 },
-              ]}
-              numberOfLines={1}
-              adjustsFontSizeToFit
-              minimumFontScale={0.8}
-            >
-              Redirecting in {countdown}s
-            </Text>
-            <Text
-              style={[
-                styles.countdownSubtext,
-                { fontSize: isSmallScreen ? 12 : 14 },
-              ]}
-              numberOfLines={1}
-              adjustsFontSizeToFit
-              minimumFontScale={0.8}
-            >
-              Click to change selection
-            </Text>
-          </View>
+      {/* ═══════ HEADER ═══════ */}
+      <Animated.View style={[styles.header, {
+        paddingTop:    R.headerPT,
+        paddingBottom: R.headerPB,
+        transform: [{ translateY: titleSlide }],
+      }]}>
+        <View style={[styles.badge, { marginBottom: R.badgeMB }]}>
+          <PulseDot color="#FF4757" size={7} style={{ marginRight: 6 }} />
+          <Text style={[styles.badgeText, { fontSize: R.badgeFz }]}>LIVE TV</Text>
         </View>
-      </ScrollView>
-    </View>
+        <Text style={[styles.title, { fontSize: R.titleFz }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
+          Choose Your Experience
+        </Text>
+        {R.showSub && (
+          <Text style={[styles.subtitle, { fontSize: R.subFz, marginTop: R.subMT }]} numberOfLines={1}>
+            Pick the interface that feels right for you
+          </Text>
+        )}
+      </Animated.View>
+
+      {/* ═══════ CARDS — flex:1 fills all remaining space ═══════
+          ┌─────────────────────────────────────┐
+          │  Portrait  │   Landscape             │
+          │  (column)  │   (row)                 │
+          │  Card 1    │   Card 1 │ VS │ Card 2  │
+          │  -- VS --  │                         │
+          │  Card 2    │                         │
+          └─────────────────────────────────────┘
+          Both cards are flex:1 inside a flex parent → share space evenly.
+          No minHeight anywhere → can never overflow.
+      ══════════════════════════════════════════ */}
+      <View style={[
+        styles.cardsRow,
+        isPortrait ? styles.cardsColumn : styles.cardsRow2,
+      ]}>
+        {/* ─── Card 1: Simple UI ─── */}
+        <Animated.View style={[
+          styles.cardWrap,
+          isPortrait ? styles.cardWrapPortrait : styles.cardWrapLandscape,
+          { transform: [{ translateY: card1Slide }, { scale: card1Scale }] },
+          // Portrait: gap below card1 (above VS divider)
+          isPortrait && { marginBottom: R.card1MB },
+        ]}>
+          <TouchableOpacity
+            focusable
+            hasTVPreferredFocus={selectedUI === 'simple'}
+            onPress={() => handleSelect('simple')}
+            onFocus={() => setFocusedUI('simple')}
+            onBlur={() => setFocusedUI(null)}
+            activeOpacity={0.92}
+            style={[
+              styles.card,
+              { paddingVertical: R.cardPadV, paddingHorizontal: R.cardPadH },
+              selectedUI === 'simple' && styles.cardSimple,
+              focusedUI  === 'simple' && styles.cardFocused,
+            ]}
+          >
+            <View style={[styles.cardGlow, { backgroundColor: selectedUI === 'simple' ? 'rgba(0,245,255,0.09)' : 'rgba(255,255,255,0.025)' }]} />
+            {selectedUI === 'simple' && <View style={styles.cornerTag}><Text style={styles.cornerTagTxt}>✓</Text></View>}
+
+            <Animated.View style={{ transform: [{ translateY: iconBounce1 }] }}>
+              <View style={[styles.iconCircle, {
+                width: R.iconCircleW, height: R.iconCircleW, borderRadius: R.iconCircleW / 2, marginBottom: R.iconMB,
+              }, selectedUI === 'simple' && styles.iconSimple]}>
+                <Icon name="television-play" size={R.iconSz} color={selectedUI === 'simple' ? '#00F5FF' : '#3D4451'} />
+              </View>
+            </Animated.View>
+
+            <Text style={[styles.cardTitle, { fontSize: R.cardTitleFz }, selectedUI === 'simple' && styles.cardTitleSimple]} numberOfLines={1}>
+              Simple UI
+            </Text>
+            <Text style={[styles.cardDesc, { fontSize: R.cardDescFz, marginBottom: R.cardDescMB }]} numberOfLines={R.cardDescLine}>
+              {R.cardDescTxt('Classic TV • Instant channels • Numeric keypad', 'Classic TV • Keypad')}
+            </Text>
+            <View style={[styles.stripe, { backgroundColor: selectedUI === 'simple' ? '#00F5FF' : '#1E2030' }]} />
+          </TouchableOpacity>
+        </Animated.View>
+
+        {/* ─── VS Divider ─── */}
+        {isPortrait ? (
+          <View style={[styles.vsDivH, { marginBottom: R.card1MB }]}>
+            <View style={styles.vsDivLineH} />
+            <View style={[styles.vsBubble, { width: R.vsBubbleW, height: R.vsBubbleW, borderRadius: R.vsBubbleW / 2, marginHorizontal: 7 }]}>
+              <Text style={[styles.vsText, { fontSize: R.vsTextFz }]}>VS</Text>
+            </View>
+            <View style={styles.vsDivLineH} />
+          </View>
+        ) : (
+          <View style={styles.vsDivV}>
+            <View style={styles.vsDivLineV} />
+            <View style={[styles.vsBubble, { width: R.vsBubbleW, height: R.vsBubbleW, borderRadius: R.vsBubbleW / 2, marginVertical: 8 }]}>
+              <Text style={[styles.vsText, { fontSize: R.vsTextFz }]}>VS</Text>
+            </View>
+            <View style={styles.vsDivLineV} />
+          </View>
+        )}
+
+        {/* ─── Card 2: Advanced UI ─── */}
+        <Animated.View style={[
+          styles.cardWrap,
+          isPortrait ? styles.cardWrapPortrait : styles.cardWrapLandscape,
+          { transform: [{ translateY: card2Slide }, { scale: card2Scale }] },
+        ]}>
+          <TouchableOpacity
+            focusable
+            onPress={() => handleSelect('advanced')}
+            onFocus={() => setFocusedUI('advanced')}
+            onBlur={() => setFocusedUI(null)}
+            activeOpacity={0.92}
+            style={[
+              styles.card,
+              { paddingVertical: R.cardPadV, paddingHorizontal: R.cardPadH },
+              selectedUI === 'advanced' && styles.cardAdvanced,
+              focusedUI  === 'advanced' && styles.cardFocused,
+            ]}
+          >
+            <View style={[styles.cardGlow, { backgroundColor: selectedUI === 'advanced' ? 'rgba(255,215,0,0.08)' : 'rgba(255,255,255,0.025)' }]} />
+            {selectedUI === 'advanced' && <View style={[styles.cornerTag, { backgroundColor: '#FFD700' }]}><Text style={[styles.cornerTagTxt, { color: '#0D0D1A' }]}>✓</Text></View>}
+
+            <Animated.View style={{ transform: [{ translateY: iconBounce2 }] }}>
+              <View style={[styles.iconCircle, {
+                width: R.iconCircleW, height: R.iconCircleW, borderRadius: R.iconCircleW / 2, marginBottom: R.iconMB,
+              }, selectedUI === 'advanced' && styles.iconAdvanced]}>
+                <Icon name="view-grid" size={R.iconSz} color={selectedUI === 'advanced' ? '#FFD700' : '#3D4451'} />
+              </View>
+            </Animated.View>
+
+            <Text style={[styles.cardTitle, { fontSize: R.cardTitleFz }, selectedUI === 'advanced' && styles.cardTitleAdv]} numberOfLines={1}>
+              Advanced UI
+            </Text>
+            <Text style={[styles.cardDesc, { fontSize: R.cardDescFz, marginBottom: R.cardDescMB }]} numberOfLines={R.cardDescLine}>
+              {R.cardDescTxt('Visual grid • Thumbnails • Smart discovery', 'Grid view • Thumbnails')}
+            </Text>
+            <View style={[styles.stripe, { backgroundColor: selectedUI === 'advanced' ? '#FFD700' : '#1E2030' }]} />
+          </TouchableOpacity>
+        </Animated.View>
+      </View>
+
+      {/* ═══════ BOTTOM BAR ═══════ */}
+      <Animated.View style={[
+        styles.bottomBar,
+        {
+          paddingVertical:   R.bPadV,
+          paddingHorizontal: R.bPadH,
+          marginHorizontal:  R.bMargH,
+          marginBottom:      R.bMargB,
+          transform: [{ translateY: bottomSlide }],
+        },
+      ]}>
+        {/* Countdown ring */}
+        <View style={[styles.ring, {
+          width: R.ringSize, height: R.ringSize, borderRadius: R.ringSize / 2, marginRight: R.ringMR,
+        }]}>
+          <Text style={[styles.ringNum, { fontSize: R.ringNumFz }]}>{countdown}</Text>
+          <Text style={[styles.ringLbl, { fontSize: R.ringLblFz }]}>sec</Text>
+        </View>
+
+        {/* Text block */}
+        <View style={styles.bottomCenter}>
+          <Text style={[styles.redirectText, { fontSize: R.redirFz }]}>
+            {'Redirecting to '}
+            <Text style={{ color: selectedUI === 'simple' ? '#00F5FF' : '#FFD700', fontFamily: FF.black }}>
+              {selectedUI === 'simple' ? 'Simple' : 'Advanced'} UI
+            </Text>
+          </Text>
+          {R.showHint && (
+            <Text style={[styles.hintText, { fontSize: R.hintFz }]}>Tap a card to switch</Text>
+          )}
+        </View>
+
+        {/* Remote hint */}
+        {R.showRemote && (
+          <View style={[styles.remoteHint, { marginLeft: 14 }]}>
+            <Icon name="remote-tv" size={R.remoteIconSz} color="#374151" />
+            <Text style={[styles.remoteTxt, { fontSize: R.remoteFz, marginTop: 3 }]}>OK to select</Text>
+          </View>
+        )}
+      </Animated.View>
+    </Animated.View>
   );
 };
 
+// ─── Font family aliases ──────────────────────────────────────────────────────
+const FF = {
+  black:     Platform.OS === 'android' ? 'sans-serif-black'     : 'AvenirNext-Heavy',
+  medium:    Platform.OS === 'android' ? 'sans-serif-medium'    : 'AvenirNext-Medium',
+  condensed: Platform.OS === 'android' ? 'sans-serif-condensed' : 'AvenirNext-Regular',
+  light:     Platform.OS === 'android' ? 'sans-serif-light'     : 'AvenirNext-Regular',
+};
+
 const styles = StyleSheet.create({
-  container: {
+  // ─── Root — flex column: header | cards(flex:1) | bottom ─────────────────
+  root: {
     flex: 1,
-    backgroundColor: '#0f0f0f',
+    backgroundColor: '#0D0D1A',
+    overflow: 'hidden',
   },
-  gridBackground: {
-    ...StyleSheet.absoluteFillObject,
-    opacity: 0.1,
-  },
-  scrollContent: {
-    flexGrow: 1,
-  },
-  scrollContentPortrait: {
-    paddingVertical: 24,
-  },
-  scrollContentLandscape: {
-    paddingVertical: 32,
-  },
-  content: {
-    flex: 1,
-    justifyContent: 'center',
+
+  // ── Background ──
+  bgGrid: { ...StyleSheet.absoluteFillObject },
+  bgDot:  { position: 'absolute', width: 3, height: 3, borderRadius: 1.5, backgroundColor: '#fff', opacity: 0.05 },
+
+  // ── Header — auto-height, no fixed padding here (set via inline R.*) ──
+  header: {
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingVertical: 24,
+  },
+  badge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,71,87,0.13)',
+    borderWidth: 1.5,
+    borderColor: '#FF4757',
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+  },
+  badgeText: {
+    fontFamily: FF.black,
+    fontWeight: '900',
+    color: '#FF4757',
+    letterSpacing: 2.5,
+    textTransform: 'uppercase',
   },
   title: {
+    fontFamily: FF.black,
     fontWeight: '900',
-    color: '#fff',
-    marginBottom: 8,
+    color: '#FFFFFF',
     textAlign: 'center',
-    flexShrink: 1,
+    letterSpacing: -0.5,
+    textShadowColor: 'rgba(0,245,255,0.22)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 16,
   },
-  description: {
-    color: '#9ca3af',
-    marginBottom: 32,
+  subtitle: {
+    fontFamily: FF.light,
+    color: '#6B7280',
+    letterSpacing: 0.4,
     textAlign: 'center',
-    flexShrink: 1,
-    maxWidth: 700,
-    lineHeight: 22,
   },
-  optionsContainer: {
-    width: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
+
+  // ── Cards row — THE CRITICAL SECTION ─────────────────────────────────────
+  //   flex:1 makes it expand to fill all space between header and bottom bar.
+  //   No height, no minHeight — children self-size via their own flex:1.
+  cardsRow: {
+    flex: 1,
+    paddingHorizontal: 6,
   },
-  optionsContainerLandscape: {
-  flexDirection: 'row',
-  justifyContent: 'center', // 👈 ensures equal spacing
-  alignItems: 'center',
-},
-  optionsContainerPortrait: {
+  cardsColumn: {     // portrait
     flexDirection: 'column',
+    alignItems: 'stretch',
+    justifyContent: 'center',
+    paddingVertical: 4,
   },
-  option: {
-    backgroundColor: '#1f2937',
-    borderRadius: 24,
-    paddingVertical: 28,
-    paddingHorizontal: 24,
+  cardsRow2: {       // landscape
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    justifyContent: 'center',
+    paddingVertical: 6,
+  },
+
+  // ── Card wrappers — flex:1 so they share the parent space evenly ──
+  cardWrap: {
+    flex: 1,          // each card wrapper takes equal share of cardsRow
+  },
+  cardWrapPortrait: {
+    alignSelf: 'stretch',   // full width in column mode
+    marginHorizontal: 14,
+  },
+  cardWrapLandscape: {
+    alignSelf: 'stretch',   // full height in row mode
+    marginHorizontal: 8,
+  },
+
+  // ── Card — also flex:1 so it fills its Animated.View wrapper ──
+  card: {
+    flex: 1,          // fills the cardWrap → no fixed height needed anywhere
+    backgroundColor: '#161626',
+    borderRadius: 18,
+    borderWidth: 2.5,
+    borderColor: '#252535',
     alignItems: 'center',
     justifyContent: 'center',
-    position: 'relative',
     overflow: 'hidden',
-    marginBottom: 18,
-    minHeight: 280,
-    borderWidth: 2,
-    borderColor: 'transparent',
+    shadowColor: '#000',
+    shadowOffset: { width: 3, height: 5 },
+    shadowOpacity: 0.6,
+    shadowRadius: 0,
+    elevation: 8,
   },
-  optionSelected: {
-    backgroundColor: '#2563eb',
+  cardSimple: {
+    borderColor: '#00F5FF',
+    backgroundColor: '#0C1E25',
+    shadowColor: '#00F5FF',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.3,
+    shadowRadius: 14,
+    elevation: 14,
   },
-  optionSelectedAdvanced: {
-    backgroundColor: '#7c3aed',
+  cardAdvanced: {
+    borderColor: '#FFD700',
+    backgroundColor: '#1D1800',
+    shadowColor: '#FFD700',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.3,
+    shadowRadius: 14,
+    elevation: 14,
   },
-  optionFocused: {
-    borderColor: '#ff3b30',
-    transform: [{ scale: 1.02 }],
+  cardFocused: {
+    borderColor: '#A29BFE',
+    shadowColor: '#A29BFE',
+    shadowOpacity: 0.4,
+    shadowRadius: 10,
+    elevation: 12,
   },
-  optionGlow: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    width: 160,
-    height: 160,
-    borderRadius: 80,
-    backgroundColor: '#fff',
-    opacity: 0.05,
+  cardGlow: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 15,
   },
-  optionIcon: {
-    marginBottom: 20,
-  },
-  optionTitle: {
-    fontWeight: 'bold',
-    color: '#fff',
-    marginBottom: 12,
-    textAlign: 'center',
-  },
-  optionDescription: {
-    color: '#e5e7eb',
-    textAlign: 'center',
-    lineHeight: 20,
-    flexShrink: 1,
-    maxWidth: 280,
-  },
-  selectedIndicator: {
-    position: 'absolute',
-    top: 16,
-    right: 16,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: '#fff',
+
+  // Corner check badge
+  cornerTag: {
+    position: 'absolute', top: 0, right: 0,
+    width: 28, height: 28,
+    backgroundColor: '#00F5FF',
+    borderBottomLeftRadius: 11,
+    borderTopRightRadius: 15,
+    alignItems: 'center',
     justifyContent: 'center',
+  },
+  cornerTagTxt: {
+    fontFamily: FF.black,
+    fontSize: 11,
+    fontWeight: '900',
+    color: '#0D0D1A',
+  },
+
+  // Icon circle — w/h/radius set inline via R
+  iconCircle: {
+    backgroundColor: '#1A1A2E',
+    borderWidth: 2,
+    borderColor: '#2C2C42',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconSimple:   { backgroundColor: 'rgba(0,245,255,0.08)',  borderColor: '#00F5FF' },
+  iconAdvanced: { backgroundColor: 'rgba(255,215,0,0.08)', borderColor: '#FFD700' },
+
+  cardTitle: {
+    fontFamily: FF.black,
+    fontWeight: '900',
+    color: '#3D4451',
+    textAlign: 'center',
+    letterSpacing: 0.4,
+    marginBottom: 5,
+  },
+  cardTitleSimple: { color: '#00F5FF' },
+  cardTitleAdv:    { color: '#FFD700' },
+
+  cardDesc: {
+    fontFamily: FF.condensed,
+    color: '#374151',
+    textAlign: 'center',
+    lineHeight: 17,
+    letterSpacing: 0.2,
+    maxWidth: 230,
+  },
+  stripe: {
+    height: 3,
+    width: '52%',
+    borderRadius: 2,
+  },
+
+  // ── VS Dividers ───────────────────────────────────────────────────────────
+  // Portrait: horizontal bar between the two stacked cards
+  vsDivH: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 28,
+  },
+  vsDivLineH: { flex: 1, height: 1.5, backgroundColor: '#1A1A2E' },
+
+  // Landscape: vertical bar between the two side-by-side cards
+  vsDivV: {
+    flexDirection: 'column',
+    alignItems: 'center',
+    alignSelf: 'stretch',   // fills full height of the row
+    width: 38,
+  },
+  vsDivLineV: { flex: 1, width: 1.5, backgroundColor: '#1A1A2E' },
+
+  // Shared bubble (size set inline via R)
+  vsBubble: {
+    backgroundColor: '#16162A',
+    borderWidth: 1.5,
+    borderColor: '#26263C',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  vsText: {
+    fontFamily: FF.black,
+    fontWeight: '900',
+    color: '#2E3344',
+    letterSpacing: 1,
+  },
+
+  // ── Bottom Bar ────────────────────────────────────────────────────────────
+  bottomBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(18, 18, 32, 0.96)',
+    borderRadius: 15,
+    borderWidth: 1.5,
+    borderColor: '#1A1A2E',
+  },
+  ring: {
+    borderWidth: 3.5,
+    borderColor: '#FFD700',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,215,0,0.07)',
+    shadowColor: '#FFD700',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.75,
+    shadowRadius: 9,
+    elevation: 9,
+  },
+  ringNum: {
+    fontFamily: FF.black,
+    fontWeight: '900',
+    color: '#FFD700',
+  },
+  ringLbl: {
+    fontFamily: FF.condensed,
+    color: '#FFD700',
+    opacity: 0.7,
+    textTransform: 'uppercase',
+    letterSpacing: 1.5,
+    marginTop: -2,
+  },
+  bottomCenter: {
+    flex: 1,
     alignItems: 'center',
   },
-  selectedDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: '#2563eb',
-  },
-  selectedDotAdvanced: {
-    backgroundColor: '#7c3aed',
-  },
-  countdownContainer: {
-    marginTop: 24,
-    backgroundColor: 'rgba(31, 41, 55, 0.5)',
-    paddingHorizontal: 24,
-    paddingVertical: 16,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#374151',
-    alignSelf: 'center',
-    maxWidth: '90%',
-  },
-  countdownText: {
-    fontWeight: 'bold',
-    color: '#fff',
+  redirectText: {
+    fontFamily: FF.medium,
+    color: '#C9D0DC',
     textAlign: 'center',
-    marginBottom: 4,
   },
-  countdownSubtext: {
-    color: '#9ca3af',
+  hintText: {
+    fontFamily: FF.light,
+    color: '#3D4451',
     textAlign: 'center',
+    marginTop: 2,
+    letterSpacing: 0.2,
+  },
+  remoteHint: {
+    alignItems: 'center',
+  },
+  remoteTxt: {
+    fontFamily: FF.condensed,
+    color: '#2E3344',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
   },
 });
 
