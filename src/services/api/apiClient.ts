@@ -6,7 +6,7 @@
 
 import { APP_CONFIG } from '../../constants/config';
 
-const BASE_URL  = 'https://iptv-backend-production-9adb.up.railway.app';
+const BASE_URL  = 'https://iptv-backend-production-2a5f.up.railway.app';
 const PAGE_SIZE = 100; // ask for max per page
 
 async function fetchPage(page: number, signal: AbortSignal): Promise<{ data: any[]; total: number }> {

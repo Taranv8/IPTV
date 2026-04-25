@@ -1,5 +1,5 @@
 // src/components/channel/ChannelList.tsx
-import React, { useRef, useCallback, useState } from 'react';
+import React, { useRef, useCallback, useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,16 +8,28 @@ import {
   FlatList,
   ScrollView,
   Platform,
+  Image,
+  Dimensions,
 } from 'react-native';
 import { Channel } from '../../types/channel';
 import { useChannelContext } from '../../context/ChannelContext';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import {
+  fetchEPG,
+  getCurrentAndNext,
+  formatTime,
+  getProgramProgress,
+  EPGProgram,
+} from '../../services/epgService';
+import type { EPGChannel } from '../../services/epgService';
 
-// ─── Item height must be a fixed constant so getItemLayout can calculate
-//     offsets without measuring. Keep in sync with channelItem styles below.
-const ITEM_HEIGHT = 44;   // paddingVertical(10)*2 + fontSize(13)*~1.2 + gap(5)
-const ITEM_GAP    = 5;    // matches listContent gap
+// ─── Layout constants ─────────────────────────────────────────────────────────
+const ITEM_HEIGHT = Platform.isTV ? 72 : 64;
+const ITEM_GAP    = 4;
 const ITEM_TOTAL  = ITEM_HEIGHT + ITEM_GAP;
+
+// Channel icon column width
+const CH_COL_W = Platform.isTV ? 140 : 120;
 
 interface Props {
   channels: Channel[];
@@ -25,88 +37,323 @@ interface Props {
   onChannelSelect: (channelNumber: number) => void;
   channelPage: number;
   setChannelPage: (page: number) => void;
-  // Called on every user interaction so the parent can reset the hide timer
   onActivity?: () => void;
+  showEPG?: boolean; // parent can hide EPG on portrait mobile
 }
 
-// ─── Single channel row ───────────────────────────────────────────────────────
-interface ChannelItemProps {
+// ─────────────────────────────────────────────────────────────────────────────
+// EPG cell — shows program title + progress bar for current program
+// ─────────────────────────────────────────────────────────────────────────────
+interface EPGCellProps {
+  current: EPGProgram | null;
+  next: EPGProgram | null;
+  isActive: boolean;
+  isTV: boolean;
+}
+
+const EPGCell: React.FC<EPGCellProps> = ({ current, next, isActive, isTV }) => {
+  if (!current && !next) {
+    return (
+      <View style={epgStyles.cell}>
+        <Text style={[epgStyles.noInfo, isActive && epgStyles.noInfoActive]}>
+          No information
+        </Text>
+      </View>
+    );
+  }
+
+  const progress = current ? getProgramProgress(current) : 0;
+
+  return (
+    <View style={epgStyles.cell}>
+      {/* Current program */}
+      {current && (
+        <View style={epgStyles.currentProgram}>
+          <View style={epgStyles.programTitleRow}>
+            <View style={[epgStyles.liveIndicator, isActive && epgStyles.liveIndicatorActive]} />
+            <Text
+              style={[epgStyles.programTitle, isActive && epgStyles.programTitleActive]}
+              numberOfLines={1}
+            >
+              {current.title}
+            </Text>
+          </View>
+          <Text style={[epgStyles.programTime, isActive && epgStyles.programTimeActive]}>
+            {formatTime(current.startTime)} – {formatTime(current.endTime)}
+          </Text>
+          {/* Progress bar */}
+          <View style={epgStyles.progressBg}>
+            <View style={[epgStyles.progressFill, { width: `${progress}%` as any }]} />
+          </View>
+        </View>
+      )}
+      {/* Next program */}
+      {next && (
+        <View style={epgStyles.nextProgram}>
+          <Icon name="arrow-right" size={10} color={isActive ? '#93c5fd' : '#4b5563'} />
+          <Text
+            style={[epgStyles.nextTitle, isActive && epgStyles.nextTitleActive]}
+            numberOfLines={1}
+          >
+            {next.title}
+          </Text>
+          <Text style={[epgStyles.nextTime, isActive && epgStyles.nextTimeActive]}>
+            {formatTime(next.startTime)}
+          </Text>
+        </View>
+      )}
+    </View>
+  );
+};
+
+const epgStyles = StyleSheet.create({
+  cell: {
+    flex: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    justifyContent: 'center',
+    gap: 4,
+  },
+  noInfo: {
+    color: '#374151',
+    fontSize: 12,
+    fontStyle: 'italic',
+  },
+  noInfoActive: { color: '#6b7280' },
+  currentProgram: { gap: 3 },
+  programTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  liveIndicator: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#ef4444',
+  },
+  liveIndicatorActive: { backgroundColor: '#f87171' },
+  programTitle: {
+    color: '#e5e7eb',
+    fontSize: Platform.isTV ? 14 : 13,
+    fontWeight: '600',
+    flex: 1,
+  },
+  programTitleActive: { color: '#fff' },
+  programTime: {
+    color: '#6b7280',
+    fontSize: 10,
+  },
+  programTimeActive: { color: '#93c5fd' },
+  progressBg: {
+    height: 2,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 1,
+    overflow: 'hidden',
+    marginTop: 2,
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: '#3b82f6',
+    borderRadius: 1,
+  },
+  nextProgram: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 2,
+  },
+  nextTitle: {
+    color: '#4b5563',
+    fontSize: 10,
+    flex: 1,
+  },
+  nextTitleActive: { color: '#9ca3af' },
+  nextTime: {
+    color: '#374151',
+    fontSize: 10,
+  },
+  nextTimeActive: { color: '#6b7280' },
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Channel row — icon column + EPG column
+// ─────────────────────────────────────────────────────────────────────────────
+interface ChannelRowProps {
   channel: Channel;
   index: number;
   isActive: boolean;
   isFirst: boolean;
   onPress: () => void;
-  onActivity?: () => void; // bubble up D-pad focus moves to parent timer
+  onActivity?: () => void;
+  epgData: Map<string, EPGChannel>;
+  showEPG: boolean;
 }
 
-const ChannelItemRow: React.FC<ChannelItemProps> = ({
+const ChannelRow: React.FC<ChannelRowProps> = ({
   channel,
   index,
   isActive,
   isFirst,
   onPress,
   onActivity,
+  epgData,
+  showEPG,
 }) => {
   const [focused, setFocused] = useState(false);
   const isTV = Platform.isTV;
+  const { current, next } = getCurrentAndNext(epgData, String(channel.id ?? channel.number));
+  const hasIcon = !!channel.logo; // channel.logo: URI string for the channel icon
 
   return (
     <TouchableOpacity
       style={[
-        styles.channelItem,
-        isActive && styles.channelItemActive,
-        focused && styles.channelItemFocused,
+        styles.row,
+        isActive && styles.rowActive,
+        focused && styles.rowFocused,
       ]}
       onPress={onPress}
       onFocus={() => { setFocused(true); onActivity?.(); }}
       onBlur={() => setFocused(false)}
-      activeOpacity={0.7}
+      activeOpacity={0.85}
       hasTVPreferredFocus={isFirst && isTV}
-      accessible={true}
+      accessible
       accessibilityLabel={`Channel ${channel.number ?? index + 1}: ${channel.name}`}
       accessibilityRole="button"
       accessibilityState={{ selected: isActive }}
     >
-      <View style={styles.channelInfo}>
-        <Text
-          style={[
-            styles.channelNumber,
-            isActive && styles.channelNumberActive,
-            focused && styles.channelNumberFocused,
-          ]}
-        >
-          {channel.number ?? index + 1}
-        </Text>
-        <Text
-          style={[styles.channelName, (isActive || focused) && styles.channelNameActive]}
-          numberOfLines={1}
-        >
-          {channel.name}
-        </Text>
-        {channel.isFavorite && <Icon name="star" size={12} color="#fbbf24" />}
-      </View>
-      <View style={styles.channelBadges}>
-        {channel.isHD && (
-          <View style={[styles.hdBadge, focused && styles.hdBadgeFocused]}>
-            <Text style={styles.hdText}>HD</Text>
+      {/* ── Selected arrow indicator ── */}
+      {isActive && (
+        <View style={styles.activeArrow}>
+          <Icon name="chevron-right" size={16} color="#3b82f6" />
+        </View>
+      )}
+
+      {/* ── Channel icon column ── */}
+      <View style={[styles.channelCol, { width: CH_COL_W }]}>
+        <View style={[
+          styles.iconWrapper,
+          isActive && styles.iconWrapperActive,
+          focused && styles.iconWrapperFocused,
+        ]}>
+          {/* Channel number badge */}
+          <Text style={[
+            styles.chNum,
+            isActive && styles.chNumActive,
+            focused && styles.chNumFocused,
+          ]}>
+            {channel.number ?? index + 1}
+          </Text>
+
+          {/* Logo or fallback */}
+          {hasIcon ? (
+            <Image
+              source={{ uri: channel.logo }}
+              style={styles.channelIcon}
+              resizeMode="contain"
+            />
+          ) : (
+            <Text
+              style={[styles.channelNameFallback, isActive && styles.channelNameFallbackActive]}
+              numberOfLines={2}
+            >
+              {channel.name}
+            </Text>
+          )}
+
+          {/* Badges */}
+          <View style={styles.badgeRow}>
+            {channel.isHD && (
+              <View style={[styles.hdBadge, isActive && styles.hdBadgeActive]}>
+                <Text style={styles.hdText}>HD</Text>
+              </View>
+            )}
+            {channel.isFavorite && (
+              <Icon name="star" size={10} color={isActive ? '#fbbf24' : '#78350f'} />
+            )}
           </View>
-        )}
+        </View>
       </View>
+
+      {/* ── Divider ── */}
+      <View style={styles.divider} />
+
+      {/* ── EPG column ── */}
+      {showEPG && (
+        <EPGCell
+          current={current}
+          next={next}
+          isActive={isActive}
+          isTV={isTV}
+        />
+      )}
+
+      {/* Portrait mode: show channel name next to icon if no EPG */}
+      {!showEPG && (
+        <View style={styles.portraitNameCol}>
+          <Text
+            style={[styles.portraitChannelName, isActive && styles.portraitChannelNameActive]}
+            numberOfLines={1}
+          >
+            {channel.name}
+          </Text>
+          {current && (
+            <Text
+              style={[styles.portraitProgram, isActive && styles.portraitProgramActive]}
+              numberOfLines={1}
+            >
+              {current.title}
+            </Text>
+          )}
+        </View>
+      )}
     </TouchableOpacity>
   );
 };
 
-// ─── Main ChannelList ─────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Main ChannelList
+// ─────────────────────────────────────────────────────────────────────────────
 const ChannelList: React.FC<Props> = ({
   channels,
   currentChannel,
   onChannelSelect,
   onActivity,
+  showEPG = true,
 }) => {
   const { filter, setFilter, groups } = useChannelContext();
   const flatListRef = useRef<FlatList>(null);
   const isTV = Platform.isTV;
 
+  // ── EPG state ──────────────────────────────────────────────────────────────
+  const [epgData, setEpgData] = useState<Map<string, EPGChannel>>(new Map());
+  const [epgLoading, setEpgLoading] = useState(false);
+
+  useEffect(() => {
+    if (channels.length === 0) return;
+    let cancelled = false;
+    setEpgLoading(true);
+    const ids = channels.map(ch => String(ch.id ?? ch.number));
+    fetchEPG(ids).then((data: React.SetStateAction<Map<string, EPGChannel>>) => {
+      if (!cancelled) {
+        setEpgData(data);
+        setEpgLoading(false);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [channels]);
+
+  // Refresh EPG every 5 minutes while visible
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (channels.length === 0) return;
+      const ids = channels.map(ch => String(ch.id ?? ch.number));
+      fetchEPG(ids).then(setEpgData);
+    }, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [channels]);
+
+  // ── Handlers ───────────────────────────────────────────────────────────────
   const handleChannelPress = useCallback(
     (channel: Channel, index: number) => {
       onActivity?.();
@@ -117,16 +364,18 @@ const ChannelList: React.FC<Props> = ({
 
   const renderItem = useCallback(
     ({ item, index }: { item: Channel; index: number }) => (
-      <ChannelItemRow
+      <ChannelRow
         channel={item}
         index={index}
         isActive={currentChannel?.id === item.id}
         isFirst={index === 0}
         onPress={() => handleChannelPress(item, index)}
         onActivity={onActivity}
+        epgData={epgData}
+        showEPG={showEPG}
       />
     ),
-    [currentChannel, handleChannelPress, onActivity],
+    [currentChannel, handleChannelPress, onActivity, epgData, showEPG],
   );
 
   const keyExtractor = useCallback(
@@ -134,11 +383,8 @@ const ChannelList: React.FC<Props> = ({
     [],
   );
 
-  // ─── getItemLayout ────────────────────────────────────────────────────────
-  // Tells FlatList exact pixel offset of every item without measuring.
-  // Required when using scrollToIndex for off-screen items.
   const getItemLayout = useCallback(
-    (_data: ArrayLike<Channel> | null | undefined, index: number) => ({
+    (_: any, index: number) => ({
       length: ITEM_HEIGHT,
       offset: ITEM_TOTAL * index,
       index,
@@ -146,24 +392,19 @@ const ChannelList: React.FC<Props> = ({
     [],
   );
 
-  // ─── onScrollToIndexFailed ────────────────────────────────────────────────
-  // Safety net: if scrollToIndex still can't find the item (e.g. list not yet
-  // laid out), scroll to the nearest known position instead of crashing.
   const handleScrollToIndexFailed = useCallback(
-    (info: { index: number; highestMeasuredFrameIndex: number; averageItemLength: number }) => {
-      const wait = new Promise<void>(resolve => setTimeout(() => resolve(), 100));
-      wait.then(() => {
+    (info: { index: number; highestMeasuredFrameIndex: number }) => {
+      setTimeout(() => {
         flatListRef.current?.scrollToIndex({
           index: Math.min(info.index, info.highestMeasuredFrameIndex),
           animated: false,
           viewPosition: 0.3,
         });
-      });
+      }, 100);
     },
     [],
   );
 
-  // ─── Auto-scroll to current channel on layout ─────────────────────────────
   const handleLayout = useCallback(() => {
     if (!currentChannel || channels.length === 0) return;
     const idx = channels.findIndex(ch => ch.id === currentChannel.id);
@@ -180,14 +421,32 @@ const ChannelList: React.FC<Props> = ({
     <View style={styles.container}>
       {/* ── Header ── */}
       <View style={styles.header}>
-        <View style={styles.headerTitle}>
-          <Icon name="television" size={18} color="#fff" />
-          <Text style={styles.headerText}>
-            All Channels ({channels.length})
-          </Text>
+        {/* Column labels */}
+        <View style={styles.colLabels}>
+          <View style={[styles.colLabelCh, { width: CH_COL_W }]}>
+            <Icon name="television-play" size={14} color="#6b7280" />
+            <Text style={styles.colLabelText}>Channel</Text>
+          </View>
+          <View style={styles.divider} />
+          {showEPG ? (
+            <View style={styles.colLabelEpg}>
+              <Icon name="clock-outline" size={14} color="#6b7280" />
+              <Text style={styles.colLabelText}>Now Playing</Text>
+              <View style={styles.colLabelSpacer} />
+              <Icon name="arrow-right" size={12} color="#4b5563" />
+              <Text style={styles.colLabelNextText}>Up Next</Text>
+              {epgLoading && (
+                <Text style={styles.epgLoadingText}>Updating…</Text>
+              )}
+            </View>
+          ) : (
+            <View style={styles.colLabelEpg}>
+              <Text style={styles.colLabelText}>{channels.length} Channels</Text>
+            </View>
+          )}
         </View>
 
-        {/* ── Category filter chips ── */}
+        {/* Category filter chips */}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -204,12 +463,10 @@ const ChannelList: React.FC<Props> = ({
               onPress={() => { onActivity?.(); setFilter({ ...filter, category: group }); }}
               accessibilityLabel={`Filter: ${group}`}
             >
-              <Text
-                style={[
-                  styles.filterChipText,
-                  filter.category === group && styles.filterChipTextActive,
-                ]}
-              >
+              <Text style={[
+                styles.filterChipText,
+                filter.category === group && styles.filterChipTextActive,
+              ]}>
                 {group}
               </Text>
             </TouchableOpacity>
@@ -217,7 +474,7 @@ const ChannelList: React.FC<Props> = ({
         </ScrollView>
       </View>
 
-      {/* ── Channel FlatList ── */}
+      {/* ── Channel list ── */}
       <FlatList
         ref={flatListRef}
         data={channels}
@@ -226,30 +483,43 @@ const ChannelList: React.FC<Props> = ({
         style={styles.list}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
-        // ── Fixes scrollToIndex crash ──────────────────────────────────────
         getItemLayout={getItemLayout}
         onScrollToIndexFailed={handleScrollToIndexFailed}
-        // ── Auto-scroll to active channel ─────────────────────────────────
         onLayout={handleLayout}
-        // ── Reset parent timer on ANY scroll interaction ───────────────────
-        // onScroll fires while finger is dragging; throttled to ~60fps
         onScroll={() => onActivity?.()}
         scrollEventThrottle={16}
-        // onMomentumScrollBegin catches TV D-pad fast-scroll
         onMomentumScrollBegin={() => onActivity?.()}
-        // ── TV-critical props ──────────────────────────────────────────────
         removeClippedSubviews={false}
-        windowSize={isTV ? 21 : 5}
-        maxToRenderPerBatch={isTV ? 30 : 10}
+        windowSize={isTV ? 21 : 7}
+        maxToRenderPerBatch={isTV ? 30 : 12}
         initialNumToRender={isTV ? 30 : 15}
         keyboardShouldPersistTaps="always"
+        ListEmptyComponent={
+          <View style={styles.emptyState}>
+            <Icon name="television-off" size={40} color="#374151" />
+            <Text style={styles.emptyText}>No channels found</Text>
+          </View>
+        }
       />
 
       {/* ── Footer ── */}
       <View style={styles.footer}>
-        <Text style={styles.footerText}>
-          {channels.length} channel{channels.length !== 1 ? 's' : ''}
-          {filter.category !== 'All' ? ` · ${filter.category}` : ''}
+        <View style={styles.footerLegend}>
+          <View style={styles.legendItem}>
+            <View style={[styles.legendDot, { backgroundColor: '#ef4444' }]} />
+            <Text style={styles.legendText}>Live</Text>
+          </View>
+          <View style={styles.legendItem}>
+            <Icon name="star" size={10} color="#fbbf24" />
+            <Text style={styles.legendText}>Favourite</Text>
+          </View>
+          <View style={styles.legendItem}>
+            <View style={[styles.legendDot, { backgroundColor: '#3b82f6' }]} />
+            <Text style={styles.legendText}>HD</Text>
+          </View>
+        </View>
+        <Text style={styles.footerCount}>
+          {channels.length} ch{filter.category !== 'All' ? ` · ${filter.category}` : ''}
         </Text>
       </View>
     </View>
@@ -258,131 +528,273 @@ const ChannelList: React.FC<Props> = ({
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
- container: {
-  flex: 1,
-  backgroundColor: 'rgba(0,0,0,0.7)',
-  borderRadius: 14,
-  borderWidth: 1,
-  borderColor: '#1f2937',
-  overflow: 'hidden',
-},
-  header: {
-    padding: 12,
-    backgroundColor: 'rgba(59,130,246,0.15)',
-    borderBottomWidth: 1,
-    borderBottomColor: '#1f2937',
+  container: {
+    flex: 1,
+    backgroundColor: 'rgba(3,7,18,0.92)',
+    borderRadius: Platform.isTV ? 16 : 12,
+    borderWidth: 1,
+    borderColor: '#1e293b',
+    overflow: 'hidden',
   },
-  headerTitle: {
+
+  // ── Header ──────────────────────────────────────────────────────────────────
+  header: {
+    backgroundColor: 'rgba(15,23,42,0.98)',
+    borderBottomWidth: 1,
+    borderBottomColor: '#1e293b',
+  },
+  colLabels: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    gap: 0,
   },
-  headerText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: 'bold',
-    marginLeft: 8,
+  colLabelCh: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingLeft: 4,
+  },
+  colLabelEpg: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingLeft: 10,
+  },
+  colLabelSpacer: { flex: 1 },
+  colLabelText: {
+    color: '#6b7280',
+    fontSize: 11,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  colLabelNextText: {
+    color: '#4b5563',
+    fontSize: 10,
+    fontWeight: '500',
+  },
+  epgLoadingText: {
+    color: '#3b82f6',
+    fontSize: 10,
+    marginLeft: 4,
   },
   filtersScroll: {
     flexGrow: 0,
+    paddingHorizontal: 8,
+    paddingBottom: 8,
   },
   filterChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    backgroundColor: 'rgba(55,65,81,0.5)',
-    borderRadius: 16,
+    paddingHorizontal: Platform.isTV ? 16 : 12,
+    paddingVertical: Platform.isTV ? 8 : 5,
+    backgroundColor: 'rgba(30,41,59,0.8)',
+    borderRadius: 20,
     marginRight: 6,
     borderWidth: 1,
-    borderColor: '#374151',
+    borderColor: '#334155',
   },
   filterChipActive: {
-    backgroundColor: '#2563eb',
+    backgroundColor: '#1d4ed8',
     borderColor: '#3b82f6',
   },
   filterChipText: {
-    color: '#9ca3af',
-    fontSize: 12,
+    color: '#64748b',
+    fontSize: Platform.isTV ? 13 : 12,
     fontWeight: '500',
   },
   filterChipTextActive: {
     color: '#fff',
-  },
-  list: {
-    flex: 1,
-  },
-  listContent: {
-    padding: 10,
+    fontWeight: '700',
   },
 
-  // ── Channel row — height MUST match ITEM_HEIGHT constant above ────────────
-  channelItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: 'rgba(55,65,81,0.5)',
-    paddingHorizontal: 10,
-    height: ITEM_HEIGHT,      // ← fixed height, matches getItemLayout
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: 'transparent',
-    marginBottom: 6,
+  // ── List ────────────────────────────────────────────────────────────────────
+  list: { flex: 1 },
+  listContent: {
+    paddingVertical: 6,
+    paddingHorizontal: 6,
   },
-  channelItemActive: {
-    backgroundColor: '#2563eb',
+
+  // ── Row ─────────────────────────────────────────────────────────────────────
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: ITEM_HEIGHT,
+    marginBottom: ITEM_GAP,
+    borderRadius: 10,
+    backgroundColor: 'rgba(15,23,42,0.6)',
+    borderWidth: 1,
+    borderColor: 'rgba(30,41,59,0.5)',
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  rowActive: {
+    backgroundColor: 'rgba(29,78,216,0.25)',
     borderColor: '#3b82f6',
+    borderWidth: 1.5,
   },
-channelItemFocused: {
-  backgroundColor: 'rgba(255,59,48,0.2)',
-  borderColor: '#ff3b30', // 🔴 red focus
-  transform: [{ scale: 1.02 }],
-},
-  channelInfo: {
+  rowFocused: {
+    backgroundColor: 'rgba(30,41,59,0.9)',
+    borderColor: '#475569',
+    borderWidth: 1.5,
+    // TV focus: slight scale handled via transform (React Native TV)
+    ...(Platform.isTV ? { transform: [{ scale: 1.01 }] } : {}),
+  },
+
+  // ── Arrow indicator for active row ──────────────────────────────────────────
+  activeArrow: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 4,
+    backgroundColor: '#3b82f6',
+    borderTopLeftRadius: 10,
+    borderBottomLeftRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingLeft: 2,
+    zIndex: 2,
+  },
+
+  // ── Channel icon column ──────────────────────────────────────────────────────
+  channelCol: {
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingLeft: 8,
+    paddingRight: 4,
+  },
+  iconWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 6,
+    width: '100%',
+    paddingRight: 4,
+  },
+  iconWrapperActive: {},
+  iconWrapperFocused: {},
+  chNum: {
+    fontSize: Platform.isTV ? 13 : 11,
+    fontWeight: '800',
+    color: '#334155',
+    minWidth: Platform.isTV ? 30 : 26,
+    textAlign: 'center',
+  },
+  chNumActive: { color: '#60a5fa' },
+  chNumFocused: { color: '#64748b' },
+  channelIcon: {
+    width: Platform.isTV ? 56 : 48,
+    height: Platform.isTV ? 36 : 30,
+    borderRadius: 4,
+    backgroundColor: 'rgba(15,23,42,0.8)',
+  },
+  channelNameFallback: {
     flex: 1,
-    gap: 10,
+    fontSize: Platform.isTV ? 13 : 12,
+    fontWeight: '600',
+    color: '#64748b',
+    lineHeight: 16,
   },
-  channelNumber: {
-    fontSize: 13,
-    fontWeight: 'bold',
-    color: '#3b82f6',
-    minWidth: 30,
+  channelNameFallbackActive: {
+    color: '#e2e8f0',
   },
-  channelNumberActive: { color: '#fff' },
-  channelNumberFocused: { color: '#93c5fd' },
-  channelName: {
-    fontSize: 13,
-    color: '#d1d5db',
-    flex: 1,
-    flexShrink: 1,
-  },
-  channelNameActive: { color: '#fff' },
-  channelBadges: {
-    flexDirection: 'row',
-    gap: 4,
+  badgeRow: {
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 3,
   },
   hdBadge: {
-    backgroundColor: '#3b82f6',
-    paddingHorizontal: 5,
-    paddingVertical: 2,
+    backgroundColor: 'rgba(30,64,175,0.6)',
+    paddingHorizontal: 4,
+    paddingVertical: 1,
     borderRadius: 3,
+    borderWidth: 1,
+    borderColor: '#1e3a8a',
   },
-  hdBadgeFocused: { backgroundColor: '#60a5fa' },
+  hdBadgeActive: {
+    backgroundColor: '#1d4ed8',
+    borderColor: '#3b82f6',
+  },
   hdText: {
-    color: '#fff',
-    fontSize: 9,
-    fontWeight: 'bold',
+    color: '#93c5fd',
+    fontSize: 8,
+    fontWeight: '900',
+    letterSpacing: 0.5,
   },
+
+  // ── Divider ─────────────────────────────────────────────────────────────────
+  divider: {
+    width: 1,
+    height: '70%',
+    backgroundColor: '#1e293b',
+  },
+
+  // ── Portrait fallback (no EPG) ───────────────────────────────────────────────
+  portraitNameCol: {
+    flex: 1,
+    paddingHorizontal: 12,
+    justifyContent: 'center',
+    gap: 3,
+  },
+  portraitChannelName: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#94a3b8',
+  },
+  portraitChannelNameActive: { color: '#fff' },
+  portraitProgram: {
+    fontSize: 11,
+    color: '#475569',
+  },
+  portraitProgramActive: { color: '#60a5fa' },
+
+  // ── Empty state ──────────────────────────────────────────────────────────────
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+    gap: 12,
+  },
+  emptyText: {
+    color: '#374151',
+    fontSize: 14,
+  },
+
+  // ── Footer ──────────────────────────────────────────────────────────────────
   footer: {
-    padding: 10,
-    backgroundColor: 'rgba(17,24,39,0.9)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: 'rgba(3,7,18,0.98)',
     borderTopWidth: 1,
-    borderTopColor: '#1f2937',
+    borderTopColor: '#1e293b',
+  },
+  footerLegend: {
+    flexDirection: 'row',
+    gap: 12,
     alignItems: 'center',
   },
-  footerText: {
-    color: '#6b7280',
-    fontSize: 12,
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  legendDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  legendText: {
+    color: '#4b5563',
+    fontSize: 10,
+  },
+  footerCount: {
+    color: '#374151',
+    fontSize: 11,
   },
 });
 

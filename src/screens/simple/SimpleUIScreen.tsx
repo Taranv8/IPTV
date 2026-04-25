@@ -7,38 +7,33 @@ import {
   TouchableOpacity,
   Pressable,
   Platform,
+  Dimensions,
+  StatusBar,
 } from 'react-native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../../types/navigation';
 import { useChannelContext } from '../../context/ChannelContext';
 import { APP_CONFIG } from '../../constants/config';
 import VideoPlayer from '../../components/player/VideoPlayer';
-// import Keypad from '../../components/channel/Keypad';
 import ChannelList from '../../components/channel/ChannelList';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useOrientation } from '../../hooks/useOrientation';
 
 // ─── Safe TV event hook ───────────────────────────────────────────────────────
-// `TVEventHandler` (class) was removed in newer RN versions.
-// `useTVEventHandler` (hook) is its replacement — only exists in react-native-tvos
-// builds, so we import it dynamically so the app doesn't crash on regular Android.
 type TVEventHandlerHook = (cb: (evt: { eventType: string }) => void) => void;
 
 const _useTVEventHandler: TVEventHandlerHook | null = (() => {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
     return require('react-native').useTVEventHandler ?? null;
   } catch {
     return null;
   }
 })();
 
-// Stable no-op so hooks count never changes between renders
 const _noopHook: TVEventHandlerHook = (_cb) => {
-  useEffect(() => {}, []); // same hook count as the real one
+  useEffect(() => {}, []);
 };
 
-// Always call the same hook — swap implementation, not call count
 const useSafeTVEvents = _useTVEventHandler ?? _noopHook;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -49,329 +44,404 @@ interface Props {
   navigation: SimpleUIScreenNavigationProp;
 }
 
+// ─── Layout constants ─────────────────────────────────────────────────────────
+const isTV = Platform.isTV;
+
+// Portrait phone: video takes top 32%, channel list takes rest
+// Landscape / TV: video is full-screen background, overlay panel on top
+const VIDEO_PORTRAIT_HEIGHT_RATIO = 0.32;
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 const SimpleUIScreen: React.FC<Props> = ({ navigation }) => {
   const { currentChannel, setCurrentChannel, filteredChannels, channels } =
     useChannelContext();
   const [showControls, setShowControls] = useState(true);
   const [channelPage, setChannelPage] = useState(0);
-  const { isLandscape, isTV, width } = useOrientation();
+  const { isLandscape, width, height } = useOrientation();
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ─── resetTimer ─────────────────────────────────────────────────────────
-  // Call on every user interaction to restart the menu hide countdown.
-  //
-  // active=false (default) → short delay (APP_CONFIG.CONTROLS_HIDE_DELAY)
-  //   Used for: screen tap, remote key, channel selection
-  //
-  // active=true → long delay (ACTIVE_MENU_DELAY = 12 s)
-  //   Used for: any interaction INSIDE the channel list or keypad, so the
-  //   user has plenty of time to browse without the menu disappearing.
-  const ACTIVE_MENU_DELAY = 12000; // ms — menu stays while user explores
+  // Portrait phone: EPG is hidden to save space
+  const showEPG = isTV || isLandscape;
+
+  // ─── Timer ────────────────────────────────────────────────────────────────
+  const ACTIVE_MENU_DELAY  = 12_000;
+  const PASSIVE_MENU_DELAY = APP_CONFIG.CONTROLS_HIDE_DELAY;
+
   const resetTimer = useCallback((active = false) => {
     setShowControls(true);
     if (hideTimer.current) clearTimeout(hideTimer.current);
     hideTimer.current = setTimeout(
       () => setShowControls(false),
-      active ? ACTIVE_MENU_DELAY : APP_CONFIG.CONTROLS_HIDE_DELAY,
+      active ? ACTIVE_MENU_DELAY : PASSIVE_MENU_DELAY,
     );
   }, []);
 
-  // Start timer on mount, clean up on unmount
   useEffect(() => {
     resetTimer();
-    return () => {
-      if (hideTimer.current) clearTimeout(hideTimer.current);
-    };
+    return () => { if (hideTimer.current) clearTimeout(hideTimer.current); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Reset timer on any TV remote key press
-  useSafeTVEvents((_evt) => {
-    resetTimer();
-  });
+  useSafeTVEvents((_evt) => resetTimer());
 
   const handleChannelChange = (channelNumber: number) => {
     const channel = channels.find(ch => ch.number === channelNumber);
     if (channel) {
       setCurrentChannel(channel);
-      resetTimer(); // user picked a channel → restart countdown
+      resetTimer();
     }
   };
 
-  // ─── Responsive sizing ──────────────────────────────────────────────────
- const GAP = 16;
+  // ─── Dimensions ───────────────────────────────────────────────────────────
+  const screenWidth  = width;
+  const screenHeight = height;
 
-const channelListWidth = isLandscape
-  ? Math.min(width * 0.5, 420)
-  : width - 24;
+  // Portrait phone: video height
+  const videoPortraitH = Math.round(screenHeight * VIDEO_PORTRAIT_HEIGHT_RATIO);
 
-const keypadWidth = isLandscape
-  ? Math.min(width * 0.28, 260)
-  : width - 24;
+  // TV top bar height
+  const topBarHeight = isTV ? 68 : 56;
 
-  const topBarHeight = isTV ? 64 : isLandscape ? 48 : 60;
+  // ─────────────────────────────────────────────────────────────────────────
+  // PORTRAIT PHONE layout:
+  //   ┌──────────────────────┐
+  //   │  Video (32% height)  │
+  //   ├──────────────────────┤  ← topBar floats above the divider
+  //   │  Channel List (flex) │
+  //   └──────────────────────┘
+  //
+  // LANDSCAPE / TV layout:
+  //   Full-screen video + semi-transparent overlay panel
+  // ─────────────────────────────────────────────────────────────────────────
+
+  const isPortraitPhone = !isTV && !isLandscape;
 
   return (
-    <Pressable style={styles.container} onPress={() => resetTimer()}>
-      {/* ── Full-screen video background ── */}
-      <View style={styles.playerContainer}>
-        {currentChannel ? (
-          <VideoPlayer channel={currentChannel} />
-        ) : (
-          <View style={styles.placeholderContainer}>
-            <Icon name="television" size={isTV ? 160 : 80} color="#374151" />
-            <Text style={[styles.placeholderText, isTV && styles.tvText]}>
-              No Channel Selected
-            </Text>
-          </View>
-        )}
-      </View>
-
-      {/* ── Transparent tap-catcher on top of the video ──────────────────────
-           react-native-video swallows ALL touch events so the outer Pressable
-           never fires while a video is playing. This invisible overlay sits
-           between the video and the controls overlay and forwards every tap /
-           TV-select to resetTimer so the menu always comes back.
-           pointerEvents="box-only" means it catches taps on itself but lets
-           touches pass through to child views (none here, so effectively a
-           full-screen tap target). When controls are already visible the
-           overlay is still present but resetTimer() is idempotent — it just
-           restarts the countdown.
-      ── */}
-      <Pressable
-        style={styles.tapCatcher}
-        onPress={() => resetTimer()}
+    <View style={styles.root}>
+      <StatusBar
+        barStyle="light-content"
+        backgroundColor="transparent"
+        translucent
       />
 
-      {/* ── Transparent tap/click catcher over the video ─────────────────────
-           The <Video> component absorbs all touch events and TV remote focus
-           when playing, so taps never reach the outer <Pressable>. This
-           invisible overlay sits on top of the video (but below the controls)
-           and forwards every interaction to resetTimer.
-           pointerEvents="box-only" means it catches taps itself but lets
-           child views (the controls overlay) handle their own touches normally.
-      ── */}
-      {!showControls && (
-        <Pressable
-          style={styles.videoTapCatcher}
-          onPress={() => resetTimer()}
-        />
-      )}
+      {/* ═══════════════════════════════════════════════════════════════════
+          PORTRAIT PHONE — stacked layout
+      ═══════════════════════════════════════════════════════════════════ */}
+      {isPortraitPhone ? (
+        <Pressable style={styles.root} onPress={() => resetTimer()}>
+          {/* Video strip */}
+          <View style={[styles.videoStrip, { height: videoPortraitH }]}>
+            {currentChannel ? (
+              <VideoPlayer channel={currentChannel} />
+            ) : (
+              <NoChannelPlaceholder isTV={false} />
+            )}
 
-      {/* ── Controls overlay ── */}
-      {showControls && (
-        <View style={styles.controlsOverlay}>
-          {/* Top bar */}
-          <View style={[styles.topBar, { height: topBarHeight }]}>
-            <View style={styles.topBarLeft}>
-              <View style={styles.logoContainer}>
-                <Icon name="home" size={isTV ? 28 : 20} color="#fff" />
-              </View>
-              <View>
-                <Text style={[styles.appName, isTV && styles.tvAppName]}>
-                  {APP_CONFIG.APP_NAME}
-                </Text>
-                <Text style={styles.modeName}>Simple-Mode</Text>
-              </View>
-            </View>
-
-            <View style={styles.topBarRight}>
+            {/* Top bar floats over the video */}
+            <View style={[styles.portraitTopBar, { height: topBarHeight }]}>
+              <AppLogo />
               {currentChannel && (
-                <View style={styles.channelInfo}>
-                  <Text style={[styles.channelNumber, isTV && styles.tvChannelNumber]}>
-                    CH {currentChannel.number}
-                  </Text>
-                  <Text style={styles.channelName} numberOfLines={1}>
+                <View style={styles.portraitChannelBadge}>
+                  <Text style={styles.portraitChNum}>CH {currentChannel.number}</Text>
+                  <Text style={styles.portraitChName} numberOfLines={1}>
                     {currentChannel.name}
                   </Text>
                 </View>
               )}
-              <TouchableOpacity
-                style={[styles.settingsButton, isTV && styles.tvButton]}
-                onPress={() => { resetTimer(); navigation.navigate('Selection'); }}
-                hasTVPreferredFocus={false}
-              >
-                <Icon name="cog" size={isTV ? 28 : 20} color="#fff" />
-              </TouchableOpacity>
+              <SettingsButton onPress={() => { resetTimer(); navigation.navigate('Selection'); }} />
             </View>
           </View>
 
-          {/* ── Body panels ── */}
-         {isLandscape ? (
-  <View style={styles.bodyLandscape}>
-    <View style={styles.channelListWrapperLandscape}>
-      <ChannelList
-        channels={filteredChannels}
-        currentChannel={currentChannel}
-        onChannelSelect={handleChannelChange}
-        channelPage={channelPage}
-        setChannelPage={setChannelPage}
-        onActivity={() => resetTimer(true)}
-      />
-    </View>
+          {/* Channel list — full remaining height */}
+          <View style={styles.portraitListContainer}>
+            <ChannelList
+              channels={filteredChannels}
+              currentChannel={currentChannel}
+              onChannelSelect={handleChannelChange}
+              channelPage={channelPage}
+              setChannelPage={setChannelPage}
+              onActivity={() => resetTimer(true)}
+              showEPG={false}
+            />
+          </View>
+        </Pressable>
+      ) : (
+        /* ═══════════════════════════════════════════════════════════════════
+            LANDSCAPE PHONE / TABLET / TV — full-screen video + overlay
+        ═══════════════════════════════════════════════════════════════════ */
+        <Pressable style={styles.root} onPress={() => resetTimer()}>
+          {/* Full-screen video background */}
+          <View style={StyleSheet.absoluteFill}>
+            {currentChannel ? (
+              <VideoPlayer channel={currentChannel} />
+            ) : (
+              <NoChannelPlaceholder isTV={isTV} />
+            )}
+          </View>
 
-    <View style={styles.keypadWrapperLandscape}>
-      {/* <Keypad
-        onChannelSelect={handleChannelChange}
-        onActivity={() => resetTimer(true)}
-      /> */}
-    </View>
-  </View>
-) : (
-  // PORTRAIT → ONLY CHANNEL LIST FULL SCREEN
-  <View style={styles.bodyPortrait}>
-    <ChannelList
-      channels={filteredChannels}
-      currentChannel={currentChannel}
-      onChannelSelect={handleChannelChange}
-      channelPage={channelPage}
-      setChannelPage={setChannelPage}
-      onActivity={() => resetTimer(true)}
-    />
-  </View>
-)}
-        </View>
+          {/* Tap catcher (video swallows touches) */}
+          <Pressable style={[StyleSheet.absoluteFill, styles.tapCatcher]} onPress={() => resetTimer()} />
+
+          {/* Invisible tap catcher when controls are hidden */}
+          {!showControls && (
+            <Pressable
+              style={[StyleSheet.absoluteFill, styles.tapCatcher, { zIndex: 10 }]}
+              onPress={() => resetTimer()}
+            />
+          )}
+
+          {/* Controls overlay */}
+          {showControls && (
+            <View style={styles.controlsOverlay}>
+              {/* Gradient scrim — darkens bottom half for readability */}
+              <View style={styles.scrim} pointerEvents="none" />
+
+              {/* Top bar */}
+              <View style={[styles.topBar, { height: topBarHeight }]}>
+                <View style={styles.topBarLeft}>
+                  <AppLogo />
+                  <View>
+                    <Text style={[styles.appName, isTV && styles.tvAppName]}>
+                      {APP_CONFIG.APP_NAME}
+                    </Text>
+                    <Text style={styles.modeName}>Simple Mode</Text>
+                  </View>
+                </View>
+                <View style={styles.topBarRight}>
+                  {currentChannel && (
+                    <View style={styles.channelInfoBadge}>
+                      <Text style={[styles.chNumBig, isTV && styles.tvChNumBig]}>
+                        CH {currentChannel.number}
+                      </Text>
+                      <Text style={styles.chNameSmall} numberOfLines={1}>
+                        {currentChannel.name}
+                      </Text>
+                    </View>
+                  )}
+                  <SettingsButton onPress={() => { resetTimer(); navigation.navigate('Selection'); }} />
+                </View>
+              </View>
+
+              {/* Channel list panel — full width, fills remaining space */}
+              <View style={[styles.panel, { top: topBarHeight }]}>
+                <ChannelList
+                  channels={filteredChannels}
+                  currentChannel={currentChannel}
+                  onChannelSelect={handleChannelChange}
+                  channelPage={channelPage}
+                  setChannelPage={setChannelPage}
+                  onActivity={() => resetTimer(true)}
+                  showEPG={showEPG}
+                />
+              </View>
+            </View>
+          )}
+        </Pressable>
       )}
-    </Pressable>
+    </View>
   );
 };
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
-const styles = StyleSheet.create({
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+const AppLogo: React.FC = () => (
+  <View style={logoStyles.container}>
+    <Icon name="television-play" size={isTV ? 26 : 18} color="#fff" />
+  </View>
+);
+
+const logoStyles = StyleSheet.create({
   container: {
-    flex: 1,
-    backgroundColor: '#000',
+    backgroundColor: '#1d4ed8',
+    padding: isTV ? 10 : 7,
+    borderRadius: 10,
+    marginRight: 10,
+    shadowColor: '#3b82f6',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.6,
+    shadowRadius: 8,
+    elevation: 6,
   },
-  playerContainer: {
-    ...StyleSheet.absoluteFillObject,
+});
+
+const SettingsButton: React.FC<{ onPress: () => void }> = ({ onPress }) => (
+  <TouchableOpacity
+    style={settingsStyles.btn}
+    onPress={onPress}
+    hasTVPreferredFocus={false}
+    accessibilityLabel="Settings"
+  >
+    <Icon name="cog-outline" size={isTV ? 26 : 20} color="#94a3b8" />
+  </TouchableOpacity>
+);
+
+const settingsStyles = StyleSheet.create({
+  btn: {
+    backgroundColor: 'rgba(30,41,59,0.8)',
+    padding: isTV ? 12 : 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#334155',
   },
-  placeholderContainer: {
+});
+
+const NoChannelPlaceholder: React.FC<{ isTV: boolean }> = ({ isTV: tv }) => (
+  <View style={placeholderStyles.container}>
+    <Icon name="television-off" size={tv ? 120 : 60} color="#1e293b" />
+    <Text style={[placeholderStyles.text, tv && placeholderStyles.tvText]}>
+      No Channel Selected
+    </Text>
+    <Text style={placeholderStyles.sub}>Select a channel from the list</Text>
+  </View>
+);
+
+const placeholderStyles = StyleSheet.create({
+  container: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#0f0f0f',
+    backgroundColor: '#030712',
+    gap: 10,
   },
-  placeholderText: {
+  text: {
     fontSize: 18,
-    color: '#6b7280',
-    marginTop: 12,
+    color: '#1f2937',
+    fontWeight: '700',
   },
-  tvText: {
-    fontSize: 28,
+  tvText: { fontSize: 28 },
+  sub: {
+    fontSize: 13,
+    color: '#111827',
   },
-  // controlsOverlay moved below tapCatcher with zIndex: 2
-  // Transparent overlay that sits above the video but below the controls.
-  // Only rendered when controls are hidden so it doesn't block menu touches.
-  videoTapCatcher: {
-    ...StyleSheet.absoluteFillObject,
+});
+
+// ─── Styles ───────────────────────────────────────────────────────────────────
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    backgroundColor: '#030712',
+  },
+
+  // ── Portrait phone ──────────────────────────────────────────────────────────
+  videoStrip: {
+    width: '100%',
+    backgroundColor: '#030712',
+    overflow: 'hidden',
+  },
+  portraitTopBar: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    backgroundColor: 'rgba(3,7,18,0.75)',
+    gap: 8,
+  },
+  portraitChannelBadge: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  portraitChNum: {
+    color: '#60a5fa',
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 1,
+  },
+  portraitChName: {
+    color: '#94a3b8',
+    fontSize: 11,
+    maxWidth: 150,
+  },
+  portraitListContainer: {
+    flex: 1,
+    backgroundColor: '#030712',
+  },
+
+  // ── Landscape / TV overlay ──────────────────────────────────────────────────
+  tapCatcher: {
     zIndex: 1,
     backgroundColor: 'transparent',
   },
+  controlsOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 5,
+  },
+
+  // Gradient scrim from transparent (top) to deep navy (bottom)
+  scrim: {
+    ...StyleSheet.absoluteFillObject,
+    // React Native doesn't support CSS linear-gradient natively.
+    // Use react-native-linear-gradient if available; fallback to semi-solid.
+    backgroundColor: 'rgba(3,7,18,0.55)',
+  },
+
+  // Top bar
   topBar: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    backgroundColor: 'rgba(0,0,0,0.85)',
+    paddingHorizontal: isTV ? 20 : 14,
+    backgroundColor: 'rgba(3,7,18,0.9)',
+    borderBottomWidth: 1,
+    borderBottomColor: '#0f172a',
+    zIndex: 10,
   },
   topBarLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
   },
-  logoContainer: {
-    backgroundColor: '#3b82f6',
-    padding: 6,
-    borderRadius: 8,
-    marginRight: 12,
-  },
   appName: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '900',
-    color: '#fff',
+    color: '#f1f5f9',
+    letterSpacing: 0.3,
   },
-  tvAppName: {
-    fontSize: 22,
-  },
+  tvAppName: { fontSize: 20 },
   modeName: {
-    fontSize: 11,
-    color: '#9ca3af',
+    fontSize: 10,
+    color: '#334155',
+    fontWeight: '500',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
   },
   topBarRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 10,
   },
-  channelInfo: {
+  channelInfoBadge: {
     alignItems: 'flex-end',
+    marginRight: 4,
   },
-  channelNumber: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#fff',
+  chNumBig: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#60a5fa',
+    letterSpacing: 1,
   },
-  tvChannelNumber: {
-    fontSize: 20,
+  tvChNumBig: { fontSize: 18 },
+  chNameSmall: {
+    fontSize: 11,
+    color: '#475569',
+    maxWidth: 160,
+    flexShrink: 1,
   },
-  channelName: {
-  fontSize: 11,
-  color: '#9ca3af',
-  maxWidth: 120,
-  flexShrink: 1, // 👈 prevents overflow
-},
-  settingsButton: {
-    backgroundColor: 'rgba(55,65,81,0.8)',
-    padding: 8,
-    borderRadius: 8,
-  },
-  tvButton: {
-    padding: 12,
-    borderRadius: 10,
-  },
- bodyLandscape: {
-  position: 'absolute',
-  top: 64,
-  left: 12,
-  right: 12,
-  bottom: 12,
-  flexDirection: 'row',
-  gap: 12,
-},
-channelListWrapperLandscape: {
-  flex: 1,           // 👈 takes full height
-},
-keypadWrapperLandscape: {
-  width: 260,
-  height: '100%',    // 👈 full height keypad
-},
 
-  
-  bodyPortrait: {
+  // Full-width channel list panel below the top bar
+  panel: {
     position: 'absolute',
-    top:64,
-    left: 12,
-    right: 12,
-    bottom: 12,
- alignItems: 'center',
+    left: isTV ? 14 : 8,
+    right: isTV ? 14 : 8,
+    bottom: isTV ? 14 : 8,
   },
-  // Transparent full-screen overlay that sits on top of the video so taps
-  // are never swallowed by react-native-video's internal touch handler.
-  tapCatcher: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 1,          // above video, below controls overlay (zIndex 2+)
-    backgroundColor: 'transparent',
-  },
-  controlsOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 2,          // always on top
-  },
-  channelListWrapper: {
-  maxHeight: '80%',
-  minHeight: 200,
-},
-  keypadWrapper: {
-  minHeight: 180,
-},
 });
 
 export default SimpleUIScreen;

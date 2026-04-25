@@ -123,13 +123,25 @@ const [countdown, setCountdown] = useState(() => APP_CONFIG.UI_SELECTION_COUNTDO
     bounceLoop(iconBounce2, 1200);
   }, []);
 
-  useEffect(() => {
-    if (countdown > 0) {
-      const t = setTimeout(() => setCountdown(c => c - 1), 1000);
-      return () => clearTimeout(t);
-    }
-    handleNavigate();
-  }, [countdown]);
+ useEffect(() => {
+  const interval = setInterval(() => {
+    setCountdown(prev => {
+      if (prev <= 1) {
+        clearInterval(interval);
+
+        // navigate AFTER state hits 0
+        setTimeout(() => {
+          handleNavigate();
+        }, 0);
+
+        return 0;
+      }
+      return prev - 1;
+    });
+  }, 1000);
+
+  return () => clearInterval(interval);
+}, []);
 
   const handleNavigate = async () => {
     await setUIMode(selectedUI);
@@ -275,26 +287,32 @@ const [countdown, setCountdown] = useState(() => APP_CONFIG.UI_SELECTION_COUNTDO
               { paddingVertical: R.cardPadV, paddingHorizontal: R.cardPadH },
               selectedUI === 'simple' && styles.cardSimple,
               focusedUI  === 'simple' && styles.cardFocused,
+              focusedUI  === 'simple' && selectedUI !== 'simple' && styles.cardFocusedUnselected,
             ]}
           >
-            <View style={[styles.cardGlow, { backgroundColor: selectedUI === 'simple' ? 'rgba(0,245,255,0.09)' : 'rgba(255,255,255,0.025)' }]} />
+            <View style={[styles.cardGlow, { backgroundColor: selectedUI === 'simple' ? 'rgba(0,245,255,0.09)' : focusedUI === 'simple' ? 'rgba(162,155,254,0.07)' : 'rgba(255,255,255,0.025)' }]} />
             {selectedUI === 'simple' && <View style={styles.cornerTag}><Text style={styles.cornerTagTxt}>✓</Text></View>}
+            {focusedUI === 'simple' && selectedUI !== 'simple' && (
+              <View style={styles.focusIndicator}>
+                <Text style={styles.focusIndicatorTxt}>PRESS OK</Text>
+              </View>
+            )}
 
             <Animated.View style={{ transform: [{ translateY: iconBounce1 }] }}>
               <View style={[styles.iconCircle, {
                 width: R.iconCircleW, height: R.iconCircleW, borderRadius: R.iconCircleW / 2, marginBottom: R.iconMB,
-              }, selectedUI === 'simple' && styles.iconSimple]}>
-                <Icon name="television-play" size={R.iconSz} color={selectedUI === 'simple' ? '#00F5FF' : '#3D4451'} />
+              }, selectedUI === 'simple' && styles.iconSimple, focusedUI === 'simple' && selectedUI !== 'simple' && styles.iconFocused]}>
+                <Icon name="television-play" size={R.iconSz} color={selectedUI === 'simple' ? '#00F5FF' : focusedUI === 'simple' ? '#A29BFE' : '#3D4451'} />
               </View>
             </Animated.View>
 
-            <Text style={[styles.cardTitle, { fontSize: R.cardTitleFz }, selectedUI === 'simple' && styles.cardTitleSimple]} numberOfLines={1}>
+            <Text style={[styles.cardTitle, { fontSize: R.cardTitleFz }, selectedUI === 'simple' && styles.cardTitleSimple, focusedUI === 'simple' && selectedUI !== 'simple' && styles.cardTitleFocused]} numberOfLines={1}>
               Simple UI
             </Text>
             <Text style={[styles.cardDesc, { fontSize: R.cardDescFz, marginBottom: R.cardDescMB }]} numberOfLines={R.cardDescLine}>
               {R.cardDescTxt('Classic TV • Instant channels • Numeric keypad', 'Classic TV • Keypad')}
             </Text>
-            <View style={[styles.stripe, { backgroundColor: selectedUI === 'simple' ? '#00F5FF' : '#1E2030' }]} />
+            <View style={[styles.stripe, { backgroundColor: selectedUI === 'simple' ? '#00F5FF' : focusedUI === 'simple' ? '#A29BFE' : '#1E2030' }]} />
           </TouchableOpacity>
         </Animated.View>
 
@@ -334,26 +352,32 @@ const [countdown, setCountdown] = useState(() => APP_CONFIG.UI_SELECTION_COUNTDO
               { paddingVertical: R.cardPadV, paddingHorizontal: R.cardPadH },
               selectedUI === 'advanced' && styles.cardAdvanced,
               focusedUI  === 'advanced' && styles.cardFocused,
+              focusedUI  === 'advanced' && selectedUI !== 'advanced' && styles.cardFocusedUnselected,
             ]}
           >
-            <View style={[styles.cardGlow, { backgroundColor: selectedUI === 'advanced' ? 'rgba(255,215,0,0.08)' : 'rgba(255,255,255,0.025)' }]} />
+            <View style={[styles.cardGlow, { backgroundColor: selectedUI === 'advanced' ? 'rgba(255,215,0,0.08)' : focusedUI === 'advanced' ? 'rgba(162,155,254,0.07)' : 'rgba(255,255,255,0.025)' }]} />
             {selectedUI === 'advanced' && <View style={[styles.cornerTag, { backgroundColor: '#FFD700' }]}><Text style={[styles.cornerTagTxt, { color: '#0D0D1A' }]}>✓</Text></View>}
+            {focusedUI === 'advanced' && selectedUI !== 'advanced' && (
+              <View style={styles.focusIndicator}>
+                <Text style={styles.focusIndicatorTxt}>PRESS OK</Text>
+              </View>
+            )}
 
             <Animated.View style={{ transform: [{ translateY: iconBounce2 }] }}>
               <View style={[styles.iconCircle, {
                 width: R.iconCircleW, height: R.iconCircleW, borderRadius: R.iconCircleW / 2, marginBottom: R.iconMB,
-              }, selectedUI === 'advanced' && styles.iconAdvanced]}>
-                <Icon name="view-grid" size={R.iconSz} color={selectedUI === 'advanced' ? '#FFD700' : '#3D4451'} />
+              }, selectedUI === 'advanced' && styles.iconAdvanced, focusedUI === 'advanced' && selectedUI !== 'advanced' && styles.iconFocused]}>
+                <Icon name="view-grid" size={R.iconSz} color={selectedUI === 'advanced' ? '#FFD700' : focusedUI === 'advanced' ? '#A29BFE' : '#3D4451'} />
               </View>
             </Animated.View>
 
-            <Text style={[styles.cardTitle, { fontSize: R.cardTitleFz }, selectedUI === 'advanced' && styles.cardTitleAdv]} numberOfLines={1}>
+            <Text style={[styles.cardTitle, { fontSize: R.cardTitleFz }, selectedUI === 'advanced' && styles.cardTitleAdv, focusedUI === 'advanced' && selectedUI !== 'advanced' && styles.cardTitleFocused]} numberOfLines={1}>
               Advanced UI
             </Text>
             <Text style={[styles.cardDesc, { fontSize: R.cardDescFz, marginBottom: R.cardDescMB }]} numberOfLines={R.cardDescLine}>
               {R.cardDescTxt('Visual grid • Thumbnails • Smart discovery', 'Grid view • Thumbnails')}
             </Text>
-            <View style={[styles.stripe, { backgroundColor: selectedUI === 'advanced' ? '#FFD700' : '#1E2030' }]} />
+            <View style={[styles.stripe, { backgroundColor: selectedUI === 'advanced' ? '#FFD700' : focusedUI === 'advanced' ? '#A29BFE' : '#1E2030' }]} />
           </TouchableOpacity>
         </Animated.View>
       </View>
@@ -455,9 +479,10 @@ const styles = StyleSheet.create({
     textShadowRadius: 16,
   },
   subtitle: {
-    fontFamily: FF.light,
-    color: '#6B7280',
-    letterSpacing: 0.4,
+    fontFamily: FF.medium,
+    fontWeight: '500',
+    color: '#8B93A5',
+    letterSpacing: 0.3,
     textAlign: 'center',
   },
 
@@ -530,11 +555,36 @@ const styles = StyleSheet.create({
   },
   cardFocused: {
     borderColor: '#A29BFE',
+    borderWidth: 3.5,
     shadowColor: '#A29BFE',
-    shadowOpacity: 0.4,
-    shadowRadius: 10,
-    elevation: 12,
+    shadowOpacity: 0.55,
+    shadowRadius: 18,
+    elevation: 18,
   },
+  cardFocusedUnselected: {
+    backgroundColor: '#13122A',
+  },
+
+  // Focus "PRESS OK" pill — top-left corner, only on unfocused+unselected
+  focusIndicator: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    backgroundColor: 'rgba(162,155,254,0.18)',
+    borderWidth: 1.2,
+    borderColor: '#A29BFE',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  focusIndicatorTxt: {
+    fontFamily: FF.black,
+    fontWeight: '900',
+    fontSize: 9,
+    color: '#A29BFE',
+    letterSpacing: 1.8,
+  },
+
   cardGlow: {
     ...StyleSheet.absoluteFillObject,
     borderRadius: 15,
@@ -567,6 +617,7 @@ const styles = StyleSheet.create({
   },
   iconSimple:   { backgroundColor: 'rgba(0,245,255,0.08)',  borderColor: '#00F5FF' },
   iconAdvanced: { backgroundColor: 'rgba(255,215,0,0.08)', borderColor: '#FFD700' },
+  iconFocused:  { backgroundColor: 'rgba(162,155,254,0.10)', borderColor: '#A29BFE' },
 
   cardTitle: {
     fontFamily: FF.black,
@@ -576,15 +627,17 @@ const styles = StyleSheet.create({
     letterSpacing: 0.4,
     marginBottom: 5,
   },
-  cardTitleSimple: { color: '#00F5FF' },
-  cardTitleAdv:    { color: '#FFD700' },
+  cardTitleSimple:  { color: '#00F5FF' },
+  cardTitleAdv:     { color: '#FFD700' },
+  cardTitleFocused: { color: '#A29BFE' },
 
   cardDesc: {
-    fontFamily: FF.condensed,
-    color: '#374151',
+    fontFamily: FF.medium,
+    fontWeight: '500',
+    color: '#5A6278',
     textAlign: 'center',
     lineHeight: 17,
-    letterSpacing: 0.2,
+    letterSpacing: 0.1,
     maxWidth: 230,
   },
   stripe: {
@@ -653,11 +706,12 @@ const styles = StyleSheet.create({
     color: '#FFD700',
   },
   ringLbl: {
-    fontFamily: FF.condensed,
+    fontFamily: FF.medium,
+    fontWeight: '500',
     color: '#FFD700',
-    opacity: 0.7,
+    opacity: 0.75,
     textTransform: 'uppercase',
-    letterSpacing: 1.5,
+    letterSpacing: 1.2,
     marginTop: -2,
   },
   bottomCenter: {
@@ -666,24 +720,27 @@ const styles = StyleSheet.create({
   },
   redirectText: {
     fontFamily: FF.medium,
+    fontWeight: '500',
     color: '#C9D0DC',
     textAlign: 'center',
   },
   hintText: {
-    fontFamily: FF.light,
-    color: '#3D4451',
+    fontFamily: FF.medium,
+    fontWeight: '500',
+    color: '#4A5268',
     textAlign: 'center',
     marginTop: 2,
-    letterSpacing: 0.2,
+    letterSpacing: 0.1,
   },
   remoteHint: {
     alignItems: 'center',
   },
   remoteTxt: {
-    fontFamily: FF.condensed,
-    color: '#2E3344',
+    fontFamily: FF.medium,
+    fontWeight: '500',
+    color: '#3A4155',
     textTransform: 'uppercase',
-    letterSpacing: 1,
+    letterSpacing: 0.8,
   },
 });
 
