@@ -205,7 +205,6 @@ const ChannelRow: React.FC<ChannelRowProps> = ({
   epgData,
   showEPG,
 }) => {
-  const [focused, setFocused] = useState(false);
   const isTV = Platform.isTV;
   const { current, next } = getCurrentAndNext(epgData, String(channel.id ?? channel.number));
   const hasIcon = !!channel.logo; // channel.logo: URI string for the channel icon
@@ -213,6 +212,7 @@ const ChannelRow: React.FC<ChannelRowProps> = ({
   return (
 <Pressable
   focusable
+  hasTVPreferredFocus={isFirst && isTV}
   style={[
     styles.row,
     isActive && styles.rowActive,
@@ -224,11 +224,11 @@ const ChannelRow: React.FC<ChannelRowProps> = ({
     onActivity?.();
   }}
   onBlur={onBlurRow}
-  hasTVPreferredFocus={isFirst && isTV}
   accessible
   accessibilityLabel={`Channel ${channel.number ?? index + 1}: ${channel.name}`}
   accessibilityRole="button"
   accessibilityState={{ selected: isActive }}
+ 
 >
       {/* ── Selected arrow indicator ── */}
       {isActive && (
@@ -242,13 +242,11 @@ const ChannelRow: React.FC<ChannelRowProps> = ({
         <View style={[
           styles.iconWrapper,
           isActive && styles.iconWrapperActive,
-          focused && styles.iconWrapperFocused,
         ]}>
           {/* Channel number badge */}
           <Text style={[
             styles.chNum,
             isActive && styles.chNumActive,
-            focused && styles.chNumFocused,
           ]}>
             {channel.number ?? index + 1}
           </Text>
@@ -376,11 +374,13 @@ const renderItem = useCallback(
       channel={item}
       index={index}
       isActive={currentChannel?.id === item.id}
-      isFocused={focusedIndex === index}
+     isFocused={focusedIndex === index}
       isFirst={index === 0}
       onPress={() => handleChannelPress(item, index)}
-      onFocusRow={() => setFocusedIndex(index)}
-      onBlurRow={() => setFocusedIndex(prev => (prev === index ? null : prev))}
+onFocusRow={() => setFocusedIndex(index)}
+onBlurRow={() => {
+  setFocusedIndex(prev => (prev === index ? null : prev));
+}}
       onActivity={onActivity}
       epgData={epgData}
       showEPG={showEPG}
@@ -501,6 +501,7 @@ const renderItem = useCallback(
         scrollEventThrottle={16}
         onMomentumScrollBegin={() => onActivity?.()}
         removeClippedSubviews={false}
+        disableIntervalMomentum={true}
         windowSize={isTV ? 21 : 7}
         maxToRenderPerBatch={isTV ? 30 : 12}
         initialNumToRender={isTV ? 30 : 15}
@@ -645,9 +646,9 @@ const styles = StyleSheet.create({
     borderColor: '#3b82f6',
     borderWidth: 1.5,
   },
- rowFocused: {
-  backgroundColor: 'rgba(255,255,255,0.16)',
-  borderColor: '#facc15',
+rowFocused: {
+  backgroundColor: 'rgba(239, 68, 68, 0.18)', // soft red glow
+  borderColor: '#ef4444', // strong red
   borderWidth: 2,
   transform: [{ scale: 1.02 }],
 },
