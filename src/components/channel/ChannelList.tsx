@@ -634,13 +634,12 @@ const styles = StyleSheet.create({
     borderColor: '#3b82f6',
     borderWidth: 1.5,
   },
-  rowFocused: {
-    backgroundColor: 'rgba(30,41,59,0.9)',
-    borderColor: '#475569',
-    borderWidth: 1.5,
-    // TV focus: slight scale handled via transform (React Native TV)
-    ...(Platform.isTV ? { transform: [{ scale: 1.01 }] } : {}),
-  },
+ rowFocused: {
+  backgroundColor: 'rgba(255, 0, 0, 0.12)',   // faded red background
+  borderColor: '#ff0000',                       // red border
+  borderWidth: 2,
+  ...(Platform.isTV ? { transform: [{ scale: 1.01 }] } : {}),
+},
 
   // ── Arrow indicator for active row ──────────────────────────────────────────
   activeArrow: {

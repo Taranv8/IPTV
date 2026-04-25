@@ -19,6 +19,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 type SelectionScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Selection'>;
 interface Props { navigation: SelectionScreenNavigationProp; }
 
+const card1Ref = useRef<React.ElementRef<typeof TouchableOpacity>>(null);
 // ─── Floating Star ────────────────────────────────────────────────────────────
 const FloatingStar: React.FC<{
   size: number; color: string;
@@ -107,7 +108,9 @@ const [countdown, setCountdown] = useState(() => APP_CONFIG.UI_SELECTION_COUNTDO
       Animated.sequence([Animated.delay(140), Animated.spring(card1Slide, { toValue: 0, tension: 70, friction: 10, useNativeDriver: true })]),
       Animated.sequence([Animated.delay(230), Animated.spring(card2Slide, { toValue: 0, tension: 70, friction: 10, useNativeDriver: true })]),
       Animated.sequence([Animated.delay(360), Animated.spring(bottomSlide, { toValue: 0, tension: 70, friction: 10, useNativeDriver: true })]),
-    ]).start();
+    ]).start(() => {
+      card1Ref.current?.focus();   // ← only this line added
+    });
 
     const bounceLoop = (anim: Animated.Value, delay: number) =>
       Animated.loop(
@@ -275,21 +278,21 @@ const [countdown, setCountdown] = useState(() => APP_CONFIG.UI_SELECTION_COUNTDO
           // Portrait: gap below card1 (above VS divider)
           isPortrait && { marginBottom: R.card1MB },
         ]}>
-          <TouchableOpacity
-            focusable
-            hasTVPreferredFocus={selectedUI === 'simple'}
-            onPress={() => handleSelect('simple')}
-            onFocus={() => setFocusedUI('simple')}
-            onBlur={() => setFocusedUI(null)}
-            activeOpacity={0.92}
-            style={[
-              styles.card,
-              { paddingVertical: R.cardPadV, paddingHorizontal: R.cardPadH },
-              selectedUI === 'simple' && styles.cardSimple,
-              focusedUI  === 'simple' && styles.cardFocused,
-              focusedUI  === 'simple' && selectedUI !== 'simple' && styles.cardFocusedUnselected,
-            ]}
-          >
+         <TouchableOpacity
+  ref={card1Ref}
+  focusable
+  onPress={() => handleSelect('simple')}
+  onFocus={() => setFocusedUI('simple')}
+  onBlur={() => setFocusedUI(null)}
+  activeOpacity={0.92}
+  style={[
+    styles.card,
+    { paddingVertical: R.cardPadV, paddingHorizontal: R.cardPadH },
+    selectedUI === 'simple' && styles.cardSimple,
+    focusedUI  === 'simple' && styles.cardFocused,
+    focusedUI  === 'simple' && selectedUI !== 'simple' && styles.cardFocusedUnselected,
+  ]}
+>
             <View style={[styles.cardGlow, { backgroundColor: selectedUI === 'simple' ? 'rgba(0,245,255,0.09)' : focusedUI === 'simple' ? 'rgba(162,155,254,0.07)' : 'rgba(255,255,255,0.025)' }]} />
             {selectedUI === 'simple' && <View style={styles.cornerTag}><Text style={styles.cornerTagTxt}>✓</Text></View>}
             {focusedUI === 'simple' && selectedUI !== 'simple' && (
@@ -554,13 +557,13 @@ const styles = StyleSheet.create({
     elevation: 14,
   },
   cardFocused: {
-    borderColor: '#A29BFE',
-    borderWidth: 3.5,
-    shadowColor: '#A29BFE',
-    shadowOpacity: 0.55,
-    shadowRadius: 18,
-    elevation: 18,
-  },
+  borderColor: '#ff0000',
+  borderWidth: 3.5,
+  shadowColor: '#ff0000',
+  shadowOpacity: 0.55,
+  shadowRadius: 18,
+  elevation: 18,
+},
   cardFocusedUnselected: {
     backgroundColor: '#13122A',
   },
