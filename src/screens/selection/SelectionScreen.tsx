@@ -3,12 +3,12 @@ import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
+  Pressable,
   Animated,
   useWindowDimensions,
   Platform,
   Easing,
-   DimensionValue,
+  DimensionValue,
 } from 'react-native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../../types/navigation';
@@ -19,7 +19,6 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 type SelectionScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Selection'>;
 interface Props { navigation: SelectionScreenNavigationProp; }
 
-const card1Ref = useRef<React.ElementRef<typeof TouchableOpacity>>(null);
 // ─── Floating Star ────────────────────────────────────────────────────────────
 const FloatingStar: React.FC<{
   size: number; color: string;
@@ -78,7 +77,7 @@ const PulseDot: React.FC<{ color: string; size: number; style?: object }> = ({ c
 const SelectionScreen: React.FC<Props> = ({ navigation }) => {
   const { uiMode, setUIMode } = useSettings();
   const { width, height } = useWindowDimensions();
-
+const card1Ref = useRef<View>(null);
   const isPortrait  = height >= width;
   // isPhone: true when the shorter screen dimension is phone-sized
   const isPhone     = Math.min(width, height) < 500;
@@ -278,14 +277,13 @@ const [countdown, setCountdown] = useState(() => APP_CONFIG.UI_SELECTION_COUNTDO
           // Portrait: gap below card1 (above VS divider)
           isPortrait && { marginBottom: R.card1MB },
         ]}>
-         <TouchableOpacity
+         <Pressable
   ref={card1Ref}
-  focusable
+  focusable={true}
+hasTVPreferredFocus
   onPress={() => handleSelect('simple')}
   onFocus={() => setFocusedUI('simple')}
-  onBlur={() => setFocusedUI(null)}
-  activeOpacity={0.92}
-  style={[
+onBlur={() => setFocusedUI(prev => (prev === 'simple' ? null : prev))}  style={[
     styles.card,
     { paddingVertical: R.cardPadV, paddingHorizontal: R.cardPadH },
     selectedUI === 'simple' && styles.cardSimple,
@@ -316,7 +314,7 @@ const [countdown, setCountdown] = useState(() => APP_CONFIG.UI_SELECTION_COUNTDO
               {R.cardDescTxt('Classic TV • Instant channels • Numeric keypad', 'Classic TV • Keypad')}
             </Text>
             <View style={[styles.stripe, { backgroundColor: selectedUI === 'simple' ? '#00F5FF' : focusedUI === 'simple' ? '#A29BFE' : '#1E2030' }]} />
-          </TouchableOpacity>
+          </Pressable>
         </Animated.View>
 
         {/* ─── VS Divider ─── */}
@@ -344,13 +342,11 @@ const [countdown, setCountdown] = useState(() => APP_CONFIG.UI_SELECTION_COUNTDO
           isPortrait ? styles.cardWrapPortrait : styles.cardWrapLandscape,
           { transform: [{ translateY: card2Slide }, { scale: card2Scale }] },
         ]}>
-          <TouchableOpacity
+          <Pressable
             focusable
             onPress={() => handleSelect('advanced')}
             onFocus={() => setFocusedUI('advanced')}
-            onBlur={() => setFocusedUI(null)}
-            activeOpacity={0.92}
-            style={[
+onBlur={() => setFocusedUI(prev => (prev === 'simple' ? null : prev))}            style={[
               styles.card,
               { paddingVertical: R.cardPadV, paddingHorizontal: R.cardPadH },
               selectedUI === 'advanced' && styles.cardAdvanced,
@@ -381,7 +377,7 @@ const [countdown, setCountdown] = useState(() => APP_CONFIG.UI_SELECTION_COUNTDO
               {R.cardDescTxt('Visual grid • Thumbnails • Smart discovery', 'Grid view • Thumbnails')}
             </Text>
             <View style={[styles.stripe, { backgroundColor: selectedUI === 'advanced' ? '#FFD700' : focusedUI === 'advanced' ? '#A29BFE' : '#1E2030' }]} />
-          </TouchableOpacity>
+          </Pressable>
         </Animated.View>
       </View>
 
@@ -556,13 +552,14 @@ const styles = StyleSheet.create({
     shadowRadius: 14,
     elevation: 14,
   },
-  cardFocused: {
-  borderColor: '#ff0000',
-  borderWidth: 3.5,
-  shadowColor: '#ff0000',
-  shadowOpacity: 0.55,
-  shadowRadius: 18,
-  elevation: 18,
+cardFocused: {
+  borderColor: '#ff4d4d',
+  borderWidth: 4,
+  shadowColor: '#ff4d4d',
+  shadowOpacity: 0.7,
+  shadowRadius: 20,
+  elevation: 20,
+  transform: [{ scale: 1.02 }],
 },
   cardFocusedUnselected: {
     backgroundColor: '#13122A',

@@ -4,12 +4,11 @@ import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
+  Pressable,
   FlatList,
   ScrollView,
   Platform,
   Image,
-  Dimensions,
 } from 'react-native';
 import { Channel } from '../../types/channel';
 import { useChannelContext } from '../../context/ChannelContext';
@@ -183,8 +182,11 @@ interface ChannelRowProps {
   channel: Channel;
   index: number;
   isActive: boolean;
+  isFocused: boolean;
   isFirst: boolean;
   onPress: () => void;
+  onFocusRow: () => void;
+  onBlurRow: () => void;
   onActivity?: () => void;
   epgData: Map<string, EPGChannel>;
   showEPG: boolean;
@@ -194,8 +196,11 @@ const ChannelRow: React.FC<ChannelRowProps> = ({
   channel,
   index,
   isActive,
+  isFocused,
   isFirst,
   onPress,
+  onFocusRow,
+  onBlurRow,
   onActivity,
   epgData,
   showEPG,
@@ -206,22 +211,25 @@ const ChannelRow: React.FC<ChannelRowProps> = ({
   const hasIcon = !!channel.logo; // channel.logo: URI string for the channel icon
 
   return (
-    <TouchableOpacity
-      style={[
-        styles.row,
-        isActive && styles.rowActive,
-        focused && styles.rowFocused,
-      ]}
-      onPress={onPress}
-      onFocus={() => { setFocused(true); onActivity?.(); }}
-      onBlur={() => setFocused(false)}
-      activeOpacity={0.85}
-      hasTVPreferredFocus={isFirst && isTV}
-      accessible
-      accessibilityLabel={`Channel ${channel.number ?? index + 1}: ${channel.name}`}
-      accessibilityRole="button"
-      accessibilityState={{ selected: isActive }}
-    >
+<Pressable
+  focusable
+  style={[
+    styles.row,
+    isActive && styles.rowActive,
+    isFocused && styles.rowFocused,
+  ]}
+  onPress={onPress}
+  onFocus={() => {
+    onFocusRow();
+    onActivity?.();
+  }}
+  onBlur={onBlurRow}
+  hasTVPreferredFocus={isFirst && isTV}
+  accessible
+  accessibilityLabel={`Channel ${channel.number ?? index + 1}: ${channel.name}`}
+  accessibilityRole="button"
+  accessibilityState={{ selected: isActive }}
+>
       {/* ── Selected arrow indicator ── */}
       {isActive && (
         <View style={styles.activeArrow}>
@@ -307,7 +315,7 @@ const ChannelRow: React.FC<ChannelRowProps> = ({
           )}
         </View>
       )}
-    </TouchableOpacity>
+</Pressable>
   );
 };
 
@@ -328,7 +336,7 @@ const ChannelList: React.FC<Props> = ({
   // ── EPG state ──────────────────────────────────────────────────────────────
   const [epgData, setEpgData] = useState<Map<string, EPGChannel>>(new Map());
   const [epgLoading, setEpgLoading] = useState(false);
-
+const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
   useEffect(() => {
     if (channels.length === 0) return;
     let cancelled = false;
@@ -362,21 +370,24 @@ const ChannelList: React.FC<Props> = ({
     [onChannelSelect, onActivity],
   );
 
-  const renderItem = useCallback(
-    ({ item, index }: { item: Channel; index: number }) => (
-      <ChannelRow
-        channel={item}
-        index={index}
-        isActive={currentChannel?.id === item.id}
-        isFirst={index === 0}
-        onPress={() => handleChannelPress(item, index)}
-        onActivity={onActivity}
-        epgData={epgData}
-        showEPG={showEPG}
-      />
-    ),
-    [currentChannel, handleChannelPress, onActivity, epgData, showEPG],
-  );
+const renderItem = useCallback(
+  ({ item, index }: { item: Channel; index: number }) => (
+    <ChannelRow
+      channel={item}
+      index={index}
+      isActive={currentChannel?.id === item.id}
+      isFocused={focusedIndex === index}
+      isFirst={index === 0}
+      onPress={() => handleChannelPress(item, index)}
+      onFocusRow={() => setFocusedIndex(index)}
+      onBlurRow={() => setFocusedIndex(prev => (prev === index ? null : prev))}
+      onActivity={onActivity}
+      epgData={epgData}
+      showEPG={showEPG}
+    />
+  ),
+  [currentChannel, focusedIndex, handleChannelPress, onActivity, epgData, showEPG],
+);
 
   const keyExtractor = useCallback(
     (item: Channel, index: number) => item.id ?? `ch-${index}`,
@@ -454,7 +465,7 @@ const ChannelList: React.FC<Props> = ({
           keyboardShouldPersistTaps="always"
         >
           {groups.map(group => (
-            <TouchableOpacity
+            <Pressable
               key={group}
               style={[
                 styles.filterChip,
@@ -469,7 +480,7 @@ const ChannelList: React.FC<Props> = ({
               ]}>
                 {group}
               </Text>
-            </TouchableOpacity>
+            </Pressable>
           ))}
         </ScrollView>
       </View>
@@ -635,12 +646,11 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
   },
  rowFocused: {
-  backgroundColor: 'rgba(255, 0, 0, 0.12)',   // faded red background
-  borderColor: '#ff0000',                       // red border
+  backgroundColor: 'rgba(255,255,255,0.16)',
+  borderColor: '#facc15',
   borderWidth: 2,
-  ...(Platform.isTV ? { transform: [{ scale: 1.01 }] } : {}),
+  transform: [{ scale: 1.02 }],
 },
-
   // ── Arrow indicator for active row ──────────────────────────────────────────
   activeArrow: {
     position: 'absolute',
