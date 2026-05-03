@@ -10,6 +10,8 @@ import {
 } from 'react-native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../../types/navigation';
+import { checkForOTAUpdate } from '../../services/OTAUpdateService';
+
 
 type SplashScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Splash'>;
 interface Props { navigation: SplashScreenNavigationProp; }
@@ -377,10 +379,27 @@ const SplashScreen: React.FC<Props> = ({ navigation }) => {
     setTimeout(drift, 800);
 
     // ── Navigate ──
-    const timer = setTimeout(() => {
-      navigation.reset({ index: 0, routes: [{ name: 'Selection' }] });
-    }, 3800);
-    return () => clearTimeout(timer);
+   // ─── REPLACE with this block ─────────────────────────────────────────
+let cancelled = false;
+
+// Run OTA check in parallel with the splash animations.
+// Both must finish before we navigate — splash always shows at least 3800 ms.
+Promise.all([
+  new Promise<void>(resolve => setTimeout(resolve, 3800)),
+  checkForOTAUpdate(),
+]).then(([, otaResult]) => {
+  if (cancelled) return;
+
+  if (otaResult.updateAvailable) {
+    // storePendingOTA() was already called inside checkForOTAUpdate()
+    navigation.reset({ index: 0, routes: [{ name: 'OTAUpdate' }] });
+  } else {
+    navigation.reset({ index: 0, routes: [{ name: 'Selection' }] });
+  }
+});
+
+return () => { cancelled = true; };
+// ─────────────────────────────────────────────────────────────────────
   }, []);
 
   // ── Particle positions ──
