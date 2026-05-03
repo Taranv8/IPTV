@@ -11,8 +11,10 @@ import com.facebook.react.defaults.DefaultReactNativeHost
 
 class MainApplication : Application(), ReactApplication {
 
-  private val rnHost: ReactNativeHost =
+  override val reactNativeHost: ReactNativeHost =
     object : DefaultReactNativeHost(this) {
+
+      override fun getUseDeveloperSupport(): Boolean = BuildConfig.DEBUG
 
       override fun getPackages() =
         PackageList(this).packages.apply {
@@ -25,12 +27,14 @@ class MainApplication : Application(), ReactApplication {
       }
 
       override fun getBundleAssetName(): String = "index.android.bundle"
+
+      override fun getJSMainModuleName(): String = "index"
     }
 
   override val reactHost: ReactHost by lazy {
     getDefaultReactHost(
       context = applicationContext,
-      reactNativeHost = rnHost
+      reactNativeHost = reactNativeHost
     )
   }
 
