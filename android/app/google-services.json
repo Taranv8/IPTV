@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "655208728657",
+    "project_id": "iptv-90878",
+    "storage_bucket": "iptv-90878.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:655208728657:android:65e5d55a371069d87a5070",
+        "android_client_info": {
+          "package_name": "com.iptv"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC_A8HuMiDF1xnjOyrvoA5NUEqqyqXvLUk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
