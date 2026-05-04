@@ -3,7 +3,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { RootStackParamList } from '../types/navigation';
 import SplashScreen     from '../screens/splash/SplashScreen';
-import OTAUpdateScreen  from '../screens/ota/OTAUpdateScreen';   // ← ADD
+import OTAUpdateScreen  from '../screens/ota/OTAUpdateScreen';
 import SelectionScreen  from '../screens/selection/SelectionScreen';
 import SimpleUIScreen   from '../screens/simple/SimpleUIScreen';
 import AdvancedUIScreen from '../screens/advanced/AdvancedUIScreen';
@@ -23,7 +23,7 @@ export const RootNavigator = () => {
         }}
       >
         <Stack.Screen name="Splash"     component={SplashScreen}     />
-        <Stack.Screen name="OTAUpdate"  component={OTAUpdateScreen}  />  {/* ← ADD */}
+        <Stack.Screen name="OTAUpdate"  component={OTAUpdateScreen}  />
         <Stack.Screen name="Selection"  component={SelectionScreen}  />
         <Stack.Screen name="SimpleUI"   component={SimpleUIScreen}   />
         <Stack.Screen name="AdvancedUI" component={AdvancedUIScreen} />
