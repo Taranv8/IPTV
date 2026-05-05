@@ -36,6 +36,7 @@ export interface Channel {
   logo?:     string;
   group:     string;
   language?: string | null;
+  excelGenre?: string | null;
   country?:  string | null;
   tvgId?:    string | null;
   sourceUrl?: string | null;
@@ -82,6 +83,7 @@ export interface MappedChannelResponse {
   logo?:       string;
   group?:      string;
   language?:   string | null;
+  excelGenre?: string | null;
   country?:    string | null;
 }
 
@@ -116,6 +118,7 @@ export interface RawChannelDocument {
   genre?:      string;          // DB may use 'genre' instead of 'group'
   hdSd?:       string;          // "HD" | "SD" — DB flag
   language?:   string | null;
+  excelGenre?: string | null;
   country?:    string | null;
   sourceUrl?:  string | null;
   bandwidth?:  string | null;
@@ -226,6 +229,7 @@ export function normalizeChannel(
     logo:      raw.logo      || active?.logo  || undefined,
     group,
     language:  raw.language  || undefined,
+excelGenre: raw.excelGenre || undefined,
     country:   raw.country   || undefined,
     tvgId:     raw.tvgId     || undefined,
     sourceUrl: raw.sourceUrl || undefined,

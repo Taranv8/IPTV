@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   Pressable,
   Platform,
-  Dimensions,
   StatusBar,
 } from 'react-native';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -47,9 +46,8 @@ interface Props {
 // ─── Layout constants ─────────────────────────────────────────────────────────
 const isTV = Platform.isTV;
 
-// Portrait phone: video takes top 32%, channel list takes rest
-// Landscape / TV: video is full-screen background, overlay panel on top
-const VIDEO_PORTRAIT_HEIGHT_RATIO = 0.32;
+// Portrait phone: video takes top 30% of screen
+const VIDEO_PORTRAIT_HEIGHT_RATIO = 0.30;
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -60,9 +58,6 @@ const SimpleUIScreen: React.FC<Props> = ({ navigation }) => {
   const [channelPage, setChannelPage] = useState(0);
   const { isLandscape, width, height } = useOrientation();
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Portrait phone: EPG is hidden to save space
-  const showEPG = isTV || isLandscape;
 
   // ─── Timer ────────────────────────────────────────────────────────────────
   const ACTIVE_MENU_DELAY  = 12_000;
@@ -94,26 +89,9 @@ const SimpleUIScreen: React.FC<Props> = ({ navigation }) => {
   };
 
   // ─── Dimensions ───────────────────────────────────────────────────────────
-  const screenWidth  = width;
   const screenHeight = height;
-
-  // Portrait phone: video height
   const videoPortraitH = Math.round(screenHeight * VIDEO_PORTRAIT_HEIGHT_RATIO);
-
-  // TV top bar height
   const topBarHeight = isTV ? 68 : 56;
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // PORTRAIT PHONE layout:
-  //   ┌──────────────────────┐
-  //   │  Video (32% height)  │
-  //   ├──────────────────────┤  ← topBar floats above the divider
-  //   │  Channel List (flex) │
-  //   └──────────────────────┘
-  //
-  // LANDSCAPE / TV layout:
-  //   Full-screen video + semi-transparent overlay panel
-  // ─────────────────────────────────────────────────────────────────────────
 
   const isPortraitPhone = !isTV && !isLandscape;
 
@@ -127,6 +105,7 @@ const SimpleUIScreen: React.FC<Props> = ({ navigation }) => {
 
       {/* ═══════════════════════════════════════════════════════════════════
           PORTRAIT PHONE — stacked layout
+          Video strip on top, TiviMate-style channel list below
       ═══════════════════════════════════════════════════════════════════ */}
       {isPortraitPhone ? (
         <Pressable style={styles.root} onPress={() => resetTimer()}>
@@ -153,7 +132,7 @@ const SimpleUIScreen: React.FC<Props> = ({ navigation }) => {
             </View>
           </View>
 
-          {/* Channel list — full remaining height */}
+          {/* Channel list — portrait mode with Language/Genre chips + compact rows */}
           <View style={styles.portraitListContainer}>
             <ChannelList
               channels={filteredChannels}
@@ -163,6 +142,7 @@ const SimpleUIScreen: React.FC<Props> = ({ navigation }) => {
               setChannelPage={setChannelPage}
               onActivity={() => resetTimer(true)}
               showEPG={false}
+              isLandscape={false}
             />
           </View>
         </Pressable>
@@ -180,8 +160,11 @@ const SimpleUIScreen: React.FC<Props> = ({ navigation }) => {
             )}
           </View>
 
-          {/* Tap catcher (video swallows touches) */}
-          <Pressable style={[StyleSheet.absoluteFill, styles.tapCatcher]} onPress={() => resetTimer()} />
+          {/* Tap catcher */}
+          <Pressable
+            style={[StyleSheet.absoluteFill, styles.tapCatcher]}
+            onPress={() => resetTimer()}
+          />
 
           {/* Invisible tap catcher when controls are hidden */}
           {!showControls && (
@@ -194,7 +177,7 @@ const SimpleUIScreen: React.FC<Props> = ({ navigation }) => {
           {/* Controls overlay */}
           {showControls && (
             <View style={styles.controlsOverlay}>
-              {/* Gradient scrim — darkens bottom half for readability */}
+              {/* Scrim */}
               <View style={styles.scrim} pointerEvents="none" />
 
               {/* Top bar */}
@@ -219,11 +202,13 @@ const SimpleUIScreen: React.FC<Props> = ({ navigation }) => {
                       </Text>
                     </View>
                   )}
-                  <SettingsButton onPress={() => { resetTimer(); navigation.navigate('Selection'); }} />
+                  <SettingsButton
+                    onPress={() => { resetTimer(); navigation.navigate('Selection'); }}
+                  />
                 </View>
               </View>
 
-              {/* Channel list panel — full width, fills remaining space */}
+              {/* TiviMate-style channel panel — full width, with left Language+Genre panel */}
               <View style={[styles.panel, { top: topBarHeight }]}>
                 <ChannelList
                   channels={filteredChannels}
@@ -232,7 +217,8 @@ const SimpleUIScreen: React.FC<Props> = ({ navigation }) => {
                   channelPage={channelPage}
                   setChannelPage={setChannelPage}
                   onActivity={() => resetTimer(true)}
-                  showEPG={showEPG}
+                  showEPG
+                  isLandscape={isLandscape}
                 />
               </View>
             </View>
@@ -304,16 +290,9 @@ const placeholderStyles = StyleSheet.create({
     backgroundColor: '#030712',
     gap: 10,
   },
-  text: {
-    fontSize: 18,
-    color: '#1f2937',
-    fontWeight: '700',
-  },
+  text: { fontSize: 18, color: '#1f2937', fontWeight: '700' },
   tvText: { fontSize: 28 },
-  sub: {
-    fontSize: 13,
-    color: '#111827',
-  },
+  sub: { fontSize: 13, color: '#111827' },
 });
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
@@ -369,16 +348,10 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     zIndex: 5,
   },
-
-  // Gradient scrim from transparent (top) to deep navy (bottom)
   scrim: {
     ...StyleSheet.absoluteFillObject,
-    // React Native doesn't support CSS linear-gradient natively.
-    // Use react-native-linear-gradient if available; fallback to semi-solid.
     backgroundColor: 'rgba(3,7,18,0.55)',
   },
-
-  // Top bar
   topBar: {
     position: 'absolute',
     top: 0,
@@ -434,8 +407,6 @@ const styles = StyleSheet.create({
     maxWidth: 160,
     flexShrink: 1,
   },
-
-  // Full-width channel list panel below the top bar
   panel: {
     position: 'absolute',
     left: isTV ? 14 : 8,

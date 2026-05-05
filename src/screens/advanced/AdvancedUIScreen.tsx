@@ -39,7 +39,7 @@ const AdvancedUIScreen: React.FC<Props> = ({ navigation }) => {
             </View>
             <View>
               <Text style={styles.appName}>{APP_CONFIG.APP_NAME}</Text>
-              <Text style={styles.modeName}>Advanced Mode</Text>
+              <Text style={styles.modeName}>Advanced Taran   ------------Mode</Text>
             </View>
           </View>
 

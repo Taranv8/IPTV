@@ -98,9 +98,13 @@ const [countdown, setCountdown] = useState(() => APP_CONFIG.UI_SELECTION_COUNTDO
   const iconBounce1 = useRef(new Animated.Value(0)).current;
   const iconBounce2 = useRef(new Animated.Value(0)).current;
   const card1Scale  = useRef(new Animated.Value(1)).current;
-  const card2Scale  = useRef(new Animated.Value(1)).current;
+const card2Scale  = useRef(new Animated.Value(1)).current;
+const selectedUIRef = useRef<'simple' | 'advanced'>(uiMode);
+ useEffect(() => {
+  selectedUIRef.current = selectedUI;
+}, [selectedUI]);
 
-  useEffect(() => {
+useEffect(() => {
     Animated.parallel([
       Animated.timing(masterFade, { toValue: 1, duration: 450, useNativeDriver: true }),
       Animated.spring(titleSlide, { toValue: 0, tension: 80, friction: 10, useNativeDriver: true }),
@@ -145,9 +149,10 @@ const [countdown, setCountdown] = useState(() => APP_CONFIG.UI_SELECTION_COUNTDO
   return () => clearInterval(interval);
 }, []);
 
-  const handleNavigate = async () => {
-    await setUIMode(selectedUI);
-    selectedUI === 'simple' ? navigation.replace('SimpleUI', {}) : navigation.replace('AdvancedUI');
+ const handleNavigate = async () => {
+    const current = selectedUIRef.current;
+    await setUIMode(current);
+    current === 'simple' ? navigation.replace('SimpleUI', {}) : navigation.replace('AdvancedUI');
   };
 
   const popCard = (scale: Animated.Value) =>
@@ -283,8 +288,8 @@ const [countdown, setCountdown] = useState(() => APP_CONFIG.UI_SELECTION_COUNTDO
 hasTVPreferredFocus
   onPress={() => handleSelect('simple')}
   onFocus={() => setFocusedUI('simple')}
-onBlur={() => setFocusedUI(prev => (prev === 'simple' ? null : prev))}  style={[
-    styles.card,
+onBlur={() => setFocusedUI(prev => (prev === 'advanced' ? null : prev))}            style={[
+              styles.card,
     { paddingVertical: R.cardPadV, paddingHorizontal: R.cardPadH },
     selectedUI === 'simple' && styles.cardSimple,
     focusedUI  === 'simple' && styles.cardFocused,
@@ -346,7 +351,7 @@ onBlur={() => setFocusedUI(prev => (prev === 'simple' ? null : prev))}  style={[
             focusable
             onPress={() => handleSelect('advanced')}
             onFocus={() => setFocusedUI('advanced')}
-onBlur={() => setFocusedUI(prev => (prev === 'simple' ? null : prev))}            style={[
+onBlur={() => setFocusedUI(prev => (prev === 'advanced' ? null : prev))}            style={[
               styles.card,
               { paddingVertical: R.cardPadV, paddingHorizontal: R.cardPadH },
               selectedUI === 'advanced' && styles.cardAdvanced,

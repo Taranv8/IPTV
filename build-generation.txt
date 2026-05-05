@@ -1,0 +1,5 @@
+npx react-native bundle --platform android --dev false --entry-file index.js --bundle-output ./ota-output/index.android.bundle --assets-dest ./ota-output/assets
+
+
+Get-FileHash .\ota-output\index.android.bundle -Algorithm SHA256
+(Get-Item .\ota-output\index.android.bundle).Length
