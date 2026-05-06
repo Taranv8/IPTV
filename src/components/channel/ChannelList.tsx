@@ -25,68 +25,35 @@ import type { EPGChannel } from '../../services/epgService';
 // ─── Constants ────────────────────────────────────────────────────────────────
 const isTV = Platform.isTV;
 
-const ITEM_HEIGHT = isTV ? 80 : 72;
-const ITEM_GAP    = 3;
-const ITEM_TOTAL  = ITEM_HEIGHT + ITEM_GAP;
-const LEFT_PANEL_W = isTV ? 240 : 180; // slightly wider to fit two pickers
-
-// Wheel picker constants
+const ITEM_HEIGHT       = isTV ? 80 : 72;
+const ITEM_GAP          = 3;
+const ITEM_TOTAL        = ITEM_HEIGHT + ITEM_GAP;
+const LEFT_PANEL_W      = isTV ? 240 : 180;
 const WHEEL_ITEM_HEIGHT = isTV ? 40 : 36;
-const WHEEL_VISIBLE_ITEMS = 5; // number of items visible in the picker
+const WHEEL_VISIBLE_ITEMS = 5;
 const WHEEL_PICKER_HEIGHT = WHEEL_ITEM_HEIGHT * WHEEL_VISIBLE_ITEMS;
 const WHEEL_SNAP_INTERVAL = WHEEL_ITEM_HEIGHT;
 
-// Map channel.language field → display label
-// Adjust the keys to match your actual API response field values
 export const LANGUAGES: string[] = [
-  'All',
-  'Hindi',
-  'English',
-  'Marathi',
-  'Bengali',
-  'Telugu',
-  'Tamil',
-  'Kannada',
-  'Gujarati',
-  'Odia',
-  'Malayalam',
-  'Punjabi',
-  'Assamese',
+  'All','Hindi','English','Marathi','Bengali','Telugu',
+  'Tamil','Kannada','Gujarati','Odia','Malayalam','Punjabi','Assamese',
 ];
 
-// Map channel.group / channel.genre field → display label
 export const GENRES: string[] = [
-  'All',
-  'Entertainment',
-  'Infotainment',
-  'Movies',
-  'Sports',
-  'News',
-  'Business News',
-  'Kids',
-  'Lifestyle',
-  'Educational',
-  'Music',
-  'Devotional',
-  'Comedy',
+  'All','Entertainment','Infotainment','Movies','Sports','News',
+  'Business News','Kids','Lifestyle','Educational','Music','Devotional','Comedy',
 ];
 
-// ─── Safe TV event hook (same as in SimpleUIScreen) ───────────────────────────
+// ─── Safe TV event hook ───────────────────────────────────────────────────────
 type TVEventHandlerHook = (cb: (evt: { eventType: string }) => void) => void;
 const _useTVEventHandler: TVEventHandlerHook | null = (() => {
-  try {
-    return require('react-native').useTVEventHandler ?? null;
-  } catch {
-    return null;
-  }
+  try { return require('react-native').useTVEventHandler ?? null; } catch { return null; }
 })();
-const _noopHook: TVEventHandlerHook = (_cb) => {
-  useEffect(() => {}, []);
-};
+const _noopHook: TVEventHandlerHook = (_cb) => { useEffect(() => {}, []); };
 const useTVEventHandler = _useTVEventHandler ?? _noopHook;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// WheelPicker — vertical snap‑to‑centre list with D‑pad support
+// WheelPicker
 // ─────────────────────────────────────────────────────────────────────────────
 interface WheelPickerProps {
   data: string[];
@@ -100,42 +67,29 @@ interface WheelPickerProps {
 }
 
 const WheelPicker: React.FC<WheelPickerProps> = ({
-  data,
-  selectedValue,
-  onValueChange,
-  counts,
-  totalCount,
-  label,
-  iconName,
-  iconColor,
+  data, selectedValue, onValueChange,
+  counts, totalCount, label, iconName, iconColor,
 }) => {
-  const flatListRef = useRef<FlatList>(null);
-  const [isFocused, setIsFocused] = useState(false);
+  const flatListRef      = useRef<FlatList>(null);
+  const isFocusedRef     = useRef(false);
   const selectedIndexRef = useRef(data.indexOf(selectedValue));
 
-  // Keep selectedIndexRef in sync
   useEffect(() => {
     selectedIndexRef.current = data.indexOf(selectedValue);
   }, [selectedValue, data]);
 
-  // Scroll to the currently selected item on mount / when data changes
   useEffect(() => {
     const idx = data.indexOf(selectedValue);
     if (idx >= 0 && flatListRef.current) {
       const timer = setTimeout(() => {
-        flatListRef.current?.scrollToIndex({
-          index: idx,
-          animated: false,
-          viewPosition: 0.5, // centre
-        });
+        flatListRef.current?.scrollToIndex({ index: idx, animated: false, viewPosition: 0.5 });
       }, 100);
       return () => clearTimeout(timer);
     }
   }, [selectedValue, data]);
 
-  // D‑pad events for TV
-  useTVEventHandler((evt: { eventType: string }) => {
-    if (!isFocused || !flatListRef.current) return;
+  useTVEventHandler(useCallback((evt: { eventType: string }) => {
+    if (!isFocusedRef.current || !flatListRef.current) return;
     if (evt.eventType === 'up') {
       const newIndex = Math.max(0, selectedIndexRef.current - 1);
       if (newIndex !== selectedIndexRef.current) {
@@ -149,17 +103,14 @@ const WheelPicker: React.FC<WheelPickerProps> = ({
         flatListRef.current?.scrollToIndex({ index: newIndex, animated: true, viewPosition: 0.5 });
       }
     }
-  });
+  }, [data, onValueChange]));
 
-  // Detect the item closest to the centre after momentum scroll ends
   const handleMomentumScrollEnd = useCallback(
     (e: { nativeEvent: { contentOffset: { y: number } } }) => {
       const offsetY = e.nativeEvent.contentOffset.y;
-      const index = Math.round(offsetY / WHEEL_SNAP_INTERVAL);
+      const index   = Math.round(offsetY / WHEEL_SNAP_INTERVAL);
       if (index >= 0 && index < data.length) {
-        if (data[index] !== selectedValue) {
-          onValueChange(data[index]);
-        }
+        if (data[index] !== selectedValue) onValueChange(data[index]);
         selectedIndexRef.current = index;
       }
     },
@@ -169,8 +120,9 @@ const WheelPicker: React.FC<WheelPickerProps> = ({
   const renderItem = useCallback(
     ({ item, index }: { item: string; index: number }) => {
       const isSelected = item === selectedValue;
-      const count = counts ? (item === 'All' ? totalCount ?? 0 : counts[item] ?? 0) : undefined;
-
+      const count = counts
+        ? (item === 'All' ? totalCount ?? 0 : counts[item] ?? 0)
+        : undefined;
       return (
         <Pressable
           style={[wheelStyles.item, isSelected && wheelStyles.itemSelected]}
@@ -186,10 +138,7 @@ const WheelPicker: React.FC<WheelPickerProps> = ({
           accessibilityState={{ selected: isSelected }}
         >
           <View style={wheelStyles.itemContent}>
-            <Text
-              style={[wheelStyles.itemText, isSelected && wheelStyles.itemTextSelected]}
-              numberOfLines={1}
-            >
+            <Text style={[wheelStyles.itemText, isSelected && wheelStyles.itemTextSelected]} numberOfLines={1}>
               {item}
             </Text>
             {count !== undefined && (
@@ -205,27 +154,18 @@ const WheelPicker: React.FC<WheelPickerProps> = ({
   );
 
   const getItemLayout = useCallback(
-    (_: any, index: number) => ({
-      length: WHEEL_ITEM_HEIGHT,
-      offset: WHEEL_ITEM_HEIGHT * index,
-      index,
-    }),
+    (_: any, index: number) => ({ length: WHEEL_ITEM_HEIGHT, offset: WHEEL_ITEM_HEIGHT * index, index }),
     [],
   );
 
   return (
     <View style={wheelStyles.container}>
-      {/* Header */}
       <View style={wheelStyles.header}>
         <Icon name={iconName} size={isTV ? 12 : 10} color={iconColor} />
         <Text style={[wheelStyles.headerText, { color: iconColor }]}>{label}</Text>
       </View>
-
-      {/* Picker body */}
       <View style={wheelStyles.pickerWrapper}>
-        {/* Centre highlight overlay */}
-        <View style={wheelStyles.selectedOverlay} pointerEvents="none" />
-
+        <View style={[wheelStyles.selectedOverlay, { pointerEvents: 'none' }]} />
         <FlatList
           ref={flatListRef}
           data={data}
@@ -239,16 +179,14 @@ const WheelPicker: React.FC<WheelPickerProps> = ({
           onScrollToIndexFailed={(info) => {
             setTimeout(() => {
               flatListRef.current?.scrollToIndex({
-                index: info.index,
-                animated: false,
-                viewPosition: 0.5,
+                index: info.index, animated: false, viewPosition: 0.5,
               });
             }, 50);
           }}
           style={wheelStyles.flatList}
           contentContainerStyle={wheelStyles.contentContainer}
-          onFocus={() => setIsFocused(true)}
-          onBlur={() => setIsFocused(false)}
+          onFocus={() => { isFocusedRef.current = true; }}
+          onBlur={() =>  { isFocusedRef.current = false; }}
           focusable={isTV}
           accessible={isTV}
         />
@@ -256,6 +194,770 @@ const WheelPicker: React.FC<WheelPickerProps> = ({
     </View>
   );
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LeftPanel
+// ─────────────────────────────────────────────────────────────────────────────
+interface LeftPanelProps {
+  channels: Channel[];
+  selectedLanguage: string;
+  selectedGenre: string;
+  onLanguageChange: (lang: string) => void;
+  onGenreChange: (genre: string) => void;
+  onActivity?: () => void;
+}
+
+const LeftPanel: React.FC<LeftPanelProps> = React.memo(({
+  channels, selectedLanguage, selectedGenre,
+  onLanguageChange, onGenreChange, onActivity,
+}) => {
+  const langCounts = useMemo(() => {
+    const map: Record<string, number> = {};
+    channels.forEach(ch => {
+      const lang = ch.language ?? '';
+      if (lang) map[lang] = (map[lang] ?? 0) + 1;
+    });
+    return map;
+  }, [channels]);
+
+  const genreCounts = useMemo(() => {
+    const map: Record<string, number> = {};
+    channels.forEach(ch => {
+      const genre = ch.excelGenre || ch.group || '';
+      if (genre) map[genre] = (map[genre] ?? 0) + 1;
+    });
+    return map;
+  }, [channels]);
+
+  const handleLanguageChange = useCallback((value: string) => {
+    onActivity?.();
+    onLanguageChange(value);
+  }, [onLanguageChange, onActivity]);
+
+  const handleGenreChange = useCallback((value: string) => {
+    onActivity?.();
+    onGenreChange(value);
+  }, [onGenreChange, onActivity]);
+
+  return (
+    <View style={leftPanelStyles.panel}>
+      <WheelPicker
+        data={LANGUAGES}
+        selectedValue={selectedLanguage}
+        onValueChange={handleLanguageChange}
+        counts={langCounts}
+        totalCount={channels.length}
+        label="LANGUAGE"
+        iconName="translate"
+        iconColor="#3b82f6"
+      />
+      <View style={leftPanelStyles.divider} />
+      <WheelPicker
+        data={GENRES}
+        selectedValue={selectedGenre}
+        onValueChange={handleGenreChange}
+        counts={genreCounts}
+        totalCount={channels.length}
+        label="GENRE"
+        iconName="filmstrip"
+        iconColor="#8b5cf6"
+      />
+    </View>
+  );
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FilterDropdown
+// ─────────────────────────────────────────────────────────────────────────────
+interface FilterDropdownProps {
+  label: string;
+  iconName: string;
+  iconColor: string;
+  data: string[];
+  selectedValue: string;
+  onSelect: (value: string) => void;
+  counts?: Record<string, number>;
+  totalCount?: number;
+  onOpen?: () => void;
+  onClose?: () => void;
+}
+
+const FilterDropdown: React.FC<FilterDropdownProps> = React.memo(({
+  label, iconName, iconColor, data, selectedValue,
+  onSelect, counts, totalCount, onOpen, onClose,
+}) => {
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    visible ? onOpen?.() : onClose?.();
+  }, [visible, onOpen, onClose]);
+
+  return (
+    <View style={dropdownStyles.container}>
+      <Pressable
+        style={dropdownStyles.button}
+        onPress={() => setVisible(true)}
+        accessible
+        accessibilityLabel={`${label}: ${selectedValue}`}
+        accessibilityRole="button"
+      >
+        <Icon name={iconName} size={14} color={iconColor} />
+        <Text style={dropdownStyles.buttonText} numberOfLines={1}>{selectedValue}</Text>
+        <Icon name="chevron-down" size={14} color="#64748b" />
+      </Pressable>
+
+      {visible && (
+        <Pressable style={dropdownStyles.overlay} onPress={() => setVisible(false)}>
+          <View style={dropdownStyles.menu}>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="always"
+              style={dropdownStyles.menuScroll}
+            >
+              {data.map(item => {
+                const count = counts
+                  ? (item === 'All' ? totalCount ?? 0 : counts[item] ?? 0)
+                  : undefined;
+                return (
+                  <Pressable
+                    key={item}
+                    style={[dropdownStyles.menuItem, selectedValue === item && dropdownStyles.menuItemActive]}
+                    onPress={() => { onSelect(item); setVisible(false); }}
+                  >
+                    <Text
+                      style={[dropdownStyles.menuItemText, selectedValue === item && dropdownStyles.menuItemTextActive]}
+                      numberOfLines={1}
+                    >
+                      {item}
+                    </Text>
+                    {count !== undefined && (
+                      <Text style={dropdownStyles.menuItemCount}>{count}</Text>
+                    )}
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </Pressable>
+      )}
+    </View>
+  );
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FilterDropdowns
+// ─────────────────────────────────────────────────────────────────────────────
+interface FilterDropdownsProps {
+  channels: Channel[];
+  selectedLanguage: string;
+  selectedGenre: string;
+  onLanguageChange: (lang: string) => void;
+  onGenreChange: (genre: string) => void;
+  onDropdownOpenChange?: (isOpen: boolean) => void;
+}
+
+const FilterDropdowns: React.FC<FilterDropdownsProps> = React.memo(({
+  channels, selectedLanguage, selectedGenre,
+  onLanguageChange, onGenreChange, onDropdownOpenChange,
+}) => {
+  const langCounts = useMemo(() => {
+    const map: Record<string, number> = {};
+    channels.forEach(ch => {
+      const lang = ch.language ?? '';
+      if (lang) map[lang] = (map[lang] ?? 0) + 1;
+    });
+    return map;
+  }, [channels]);
+
+  const genreCounts = useMemo(() => {
+    const map: Record<string, number> = {};
+    channels.forEach(ch => {
+      const genre = ch.excelGenre || ch.group || '';
+      if (genre) map[genre] = (map[genre] ?? 0) + 1;
+    });
+    return map;
+  }, [channels]);
+
+  const openCountRef = useRef(0);
+
+  const handleOpen = useCallback(() => {
+    openCountRef.current += 1;
+    onDropdownOpenChange?.(true);
+  }, [onDropdownOpenChange]);
+
+  const handleClose = useCallback(() => {
+    openCountRef.current = Math.max(0, openCountRef.current - 1);
+    if (openCountRef.current === 0) onDropdownOpenChange?.(false);
+  }, [onDropdownOpenChange]);
+
+  return (
+    <View style={dropdownsStyles.container}>
+      <FilterDropdown
+        label="Language" iconName="translate" iconColor="#3b82f6"
+        data={LANGUAGES} selectedValue={selectedLanguage} onSelect={onLanguageChange}
+        counts={langCounts} totalCount={channels.length}
+        onOpen={handleOpen} onClose={handleClose}
+      />
+      <View style={{ height: 6 }} />
+      <FilterDropdown
+        label="Genre" iconName="filmstrip" iconColor="#8b5cf6"
+        data={GENRES} selectedValue={selectedGenre} onSelect={onGenreChange}
+        counts={genreCounts} totalCount={channels.length}
+        onOpen={handleOpen} onClose={handleClose}
+      />
+    </View>
+  );
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PortraitFilters
+// ─────────────────────────────────────────────────────────────────────────────
+interface PortraitFiltersProps {
+  selectedLanguage: string;
+  selectedGenre: string;
+  onLanguageChange: (lang: string) => void;
+  onGenreChange: (genre: string) => void;
+  onActivity?: () => void;
+}
+
+const PortraitFilters: React.FC<PortraitFiltersProps> = React.memo(({
+  selectedLanguage, selectedGenre, onLanguageChange, onGenreChange, onActivity,
+}) => (
+  <View style={portraitFilterStyles.wrapper}>
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={portraitFilterStyles.row} keyboardShouldPersistTaps="always">
+      {LANGUAGES.map(lang => (
+        <Pressable
+          key={lang}
+          style={[portraitFilterStyles.chip, selectedLanguage === lang && portraitFilterStyles.chipActive, selectedLanguage === lang && portraitFilterStyles.chipLangActive]}
+          onPress={() => { onActivity?.(); onLanguageChange(lang); }}
+        >
+          <Text style={[portraitFilterStyles.chipText, selectedLanguage === lang && portraitFilterStyles.chipTextActive]}>
+            {lang}
+          </Text>
+        </Pressable>
+      ))}
+    </ScrollView>
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={portraitFilterStyles.row} keyboardShouldPersistTaps="always">
+      {GENRES.map(genre => (
+        <Pressable
+          key={genre}
+          style={[portraitFilterStyles.chip, selectedGenre === genre && portraitFilterStyles.chipActive, selectedGenre === genre && portraitFilterStyles.chipGenreActive]}
+          onPress={() => { onActivity?.(); onGenreChange(genre); }}
+        >
+          <Text style={[portraitFilterStyles.chipText, selectedGenre === genre && portraitFilterStyles.chipTextActive]}>
+            {genre}
+          </Text>
+        </Pressable>
+      ))}
+    </ScrollView>
+  </View>
+));
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ProgressBar
+// ─────────────────────────────────────────────────────────────────────────────
+const ProgressBar: React.FC<{ progress: number; isActive: boolean }> = React.memo(({ progress, isActive }) => (
+  <View style={progressStyles.track}>
+    <View style={[
+      progressStyles.fill,
+      { width: `${Math.min(100, Math.max(0, progress))}%` as any },
+      isActive && progressStyles.fillActive,
+    ]} />
+  </View>
+));
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ChannelRow
+// ─────────────────────────────────────────────────────────────────────────────
+interface ChannelRowProps {
+  channel: Channel;
+  index: number;
+  isActive: boolean;
+  isFocused: boolean;
+  isFirst: boolean;
+  onPress: () => void;
+  onFocusRow: () => void;
+  onBlurRow: () => void;
+  onActivity?: () => void;
+  epgData: Map<string, EPGChannel>;
+}
+
+const ChannelRow: React.FC<ChannelRowProps> = React.memo(({
+  channel, index, isActive, isFocused, isFirst,
+  onPress, onFocusRow, onBlurRow, onActivity, epgData,
+}) => {
+  const { current, next } = getCurrentAndNext(epgData, String(channel.id ?? channel.number));
+  const progress = current ? getProgramProgress(current) : 0;
+  const hasLogo  = !!channel.logo;
+
+  return (
+    <Pressable
+      focusable
+      hasTVPreferredFocus={isFirst && isTV}
+      style={[rowStyles.row, isActive && rowStyles.rowActive, isFocused && rowStyles.rowFocused]}
+      onPress={onPress}
+      onFocus={() => { onFocusRow(); onActivity?.(); }}
+      onBlur={onBlurRow}
+      accessible
+      accessibilityLabel={`Channel ${channel.number ?? index + 1}: ${channel.name}`}
+      accessibilityRole="button"
+      accessibilityState={{ selected: isActive }}
+    >
+      {isActive && <View style={rowStyles.activeBar} />}
+
+      <View style={rowStyles.logoBlock}>
+        <View style={[rowStyles.logoCard, isActive && rowStyles.logoCardActive]}>
+          {hasLogo ? (
+            <Image source={{ uri: channel.logo }} style={rowStyles.logoImg} resizeMode="contain" />
+          ) : (
+            <Text style={[rowStyles.logoFallback, isActive && rowStyles.logoFallbackActive]} numberOfLines={2}>
+              {channel.name}
+            </Text>
+          )}
+        </View>
+        <Text style={[rowStyles.chNum, isActive && rowStyles.chNumActive]}>
+          {channel.number ?? index + 1}
+        </Text>
+      </View>
+
+      <View style={rowStyles.mainInfo}>
+        <View style={rowStyles.nameRow}>
+          <Text style={[rowStyles.channelName, isActive && rowStyles.channelNameActive]} numberOfLines={1}>
+            {channel.name}
+          </Text>
+          <View style={rowStyles.badges}>
+            {channel.isHD && (
+              <View style={[rowStyles.hdBadge, isActive && rowStyles.hdBadgeActive]}>
+                <Text style={rowStyles.hdText}>HD</Text>
+              </View>
+            )}
+            {channel.isFavorite && (
+              <Icon name="star" size={11} color={isActive ? '#fbbf24' : '#78350f'} />
+            )}
+          </View>
+        </View>
+
+        {current ? (
+          <>
+            <View style={rowStyles.programRow}>
+              <View style={[rowStyles.liveIndicator, isActive && rowStyles.liveIndicatorActive]} />
+              <Text style={[rowStyles.programTitle, isActive && rowStyles.programTitleActive]} numberOfLines={1}>
+                {current.title}
+              </Text>
+            </View>
+            <View style={rowStyles.progressRow}>
+              <Text style={[rowStyles.timeText, isActive && rowStyles.timeTextActive]}>
+                {formatTime(current.startTime)}
+              </Text>
+              <ProgressBar progress={progress} isActive={isActive} />
+              <Text style={[rowStyles.timeText, isActive && rowStyles.timeTextActive]}>
+                {formatTime(current.endTime)}
+              </Text>
+            </View>
+          </>
+        ) : (
+          <Text style={rowStyles.noInfo}>No program information</Text>
+        )}
+      </View>
+
+      {next && (
+        <View style={rowStyles.nextBlock}>
+          <Text style={rowStyles.nextLabel}>NEXT</Text>
+          <Text style={[rowStyles.nextTitle, isActive && rowStyles.nextTitleActive]} numberOfLines={2}>
+            {next.title}
+          </Text>
+          <Text style={[rowStyles.nextTime, isActive && rowStyles.nextTimeActive]}>
+            {formatTime(next.startTime)}
+          </Text>
+        </View>
+      )}
+    </Pressable>
+  );
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PortraitChannelRow
+// ─────────────────────────────────────────────────────────────────────────────
+interface PortraitRowProps {
+  channel: Channel;
+  index: number;
+  isActive: boolean;
+  onPress: () => void;
+  epgData: Map<string, EPGChannel>;
+}
+
+const PortraitChannelRow: React.FC<PortraitRowProps> = React.memo(({
+  channel, index, isActive, onPress, epgData,
+}) => {
+  const { current } = getCurrentAndNext(epgData, String(channel.id ?? channel.number));
+  const progress = current ? getProgramProgress(current) : 0;
+  const hasLogo  = !!channel.logo;
+
+  return (
+    <Pressable
+      style={[portraitRowStyles.row, isActive && portraitRowStyles.rowActive]}
+      onPress={onPress}
+      accessible
+      accessibilityLabel={`Channel ${channel.number ?? index + 1}: ${channel.name}`}
+      accessibilityRole="button"
+      accessibilityState={{ selected: isActive }}
+    >
+      {isActive && <View style={portraitRowStyles.activeBar} />}
+
+      <View style={[portraitRowStyles.logoCard, isActive && portraitRowStyles.logoCardActive]}>
+        {hasLogo ? (
+          <Image source={{ uri: channel.logo }} style={portraitRowStyles.logoImg} resizeMode="contain" />
+        ) : (
+          <Text style={[portraitRowStyles.logoFallback, isActive && portraitRowStyles.logoFallbackActive]} numberOfLines={2}>
+            {channel.name}
+          </Text>
+        )}
+      </View>
+
+      <View style={portraitRowStyles.info}>
+        <View style={portraitRowStyles.topRow}>
+          <Text style={[portraitRowStyles.name, isActive && portraitRowStyles.nameActive]} numberOfLines={1}>
+            {channel.name}
+          </Text>
+          {channel.isHD && (
+            <View style={[portraitRowStyles.hdBadge, isActive && portraitRowStyles.hdBadgeActive]}>
+              <Text style={portraitRowStyles.hdText}>HD</Text>
+            </View>
+          )}
+          {channel.isFavorite && (
+            <Icon name="star" size={10} color={isActive ? '#fbbf24' : '#78350f'} />
+          )}
+        </View>
+
+        {current ? (
+          <>
+            <Text style={[portraitRowStyles.program, isActive && portraitRowStyles.programActive]} numberOfLines={1}>
+              {current.title}
+            </Text>
+            <View style={portraitRowStyles.progressRow}>
+              <View style={portraitRowStyles.progressTrack}>
+                <View style={[
+                  portraitRowStyles.progressFill,
+                  { width: `${progress}%` as any },
+                  isActive && portraitRowStyles.progressFillActive,
+                ]} />
+              </View>
+              <Text style={[portraitRowStyles.timeText, isActive && portraitRowStyles.timeTextActive]}>
+                {formatTime(current.endTime)}
+              </Text>
+            </View>
+          </>
+        ) : (
+          <Text style={portraitRowStyles.noInfo}>No info</Text>
+        )}
+      </View>
+
+      <Text style={[portraitRowStyles.chNum, isActive && portraitRowStyles.chNumActive]}>
+        {channel.number ?? index + 1}
+      </Text>
+    </Pressable>
+  );
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ChannelListHeader
+// ─────────────────────────────────────────────────────────────────────────────
+const ChannelListHeader: React.FC<{
+  count: number;
+  epgLoading: boolean;
+  selectedLanguage: string;
+  selectedGenre: string;
+}> = React.memo(({ count, epgLoading, selectedLanguage, selectedGenre }) => (
+  <View style={listHeaderStyles.container}>
+    <View style={listHeaderStyles.left}>
+      <Icon name="television-play" size={13} color="#3b82f6" />
+      <Text style={listHeaderStyles.label}>{count} Channel{count !== 1 ? 's' : ''}</Text>
+      {selectedLanguage !== 'All' && (
+        <View style={listHeaderStyles.filterTag}>
+          <Icon name="translate" size={10} color="#60a5fa" />
+          <Text style={listHeaderStyles.filterTagText}>{selectedLanguage}</Text>
+        </View>
+      )}
+      {selectedGenre !== 'All' && (
+        <View style={[listHeaderStyles.filterTag, listHeaderStyles.filterTagGenre]}>
+          <Icon name="filmstrip" size={10} color="#a78bfa" />
+          <Text style={[listHeaderStyles.filterTagText, listHeaderStyles.filterTagTextGenre]}>{selectedGenre}</Text>
+        </View>
+      )}
+    </View>
+    <View style={listHeaderStyles.right}>
+      <Icon name="clock-outline" size={12} color="#374151" />
+      <Text style={listHeaderStyles.epgLabel}>Now Playing</Text>
+      <Icon name="arrow-right" size={11} color="#1e293b" />
+      <Text style={listHeaderStyles.nextLabel}>Up Next</Text>
+      {epgLoading && <Text style={listHeaderStyles.updating}>Updating…</Text>}
+    </View>
+  </View>
+));
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Props
+// ─────────────────────────────────────────────────────────────────────────────
+interface Props {
+  channels: Channel[];
+  currentChannel: Channel | null;
+  onChannelSelect: (channelNumber: number) => void;
+  onActivity?: () => void;
+  showEPG?: boolean;
+  isLandscape?: boolean;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ChannelList
+// ─────────────────────────────────────────────────────────────────────────────
+const ChannelList: React.FC<Props> = ({
+  channels, currentChannel, onChannelSelect, onActivity,
+  showEPG = true, isLandscape = false,
+}) => {
+  const flatListRef = useRef<FlatList>(null);
+
+  const [selectedLanguage, setSelectedLanguage] = useState('All');
+  const [selectedGenre,    setSelectedGenre]    = useState('All');
+  const [isDropdownOpen,   setIsDropdownOpen]   = useState(false);
+  const [epgData,          setEpgData]          = useState<Map<string, EPGChannel>>(new Map());
+  const [epgLoading,       setEpgLoading]       = useState(false);
+
+  const focusedIndexRef = useRef<number | null>(null);
+  const [, forceUpdate] = useState(0);
+
+  const channelsRef = useRef(channels);
+  useEffect(() => { channelsRef.current = channels; }, [channels]);
+
+  // ── EPG initial fetch ──────────────────────────────────────────────────────
+  useEffect(() => {
+    if (channels.length === 0) return;
+    let cancelled = false;
+    setEpgLoading(true);
+    const ids = channels.map(ch => String(ch.id ?? ch.number));
+    fetchEPG(ids).then((data: Map<string, EPGChannel>) => {
+      if (!cancelled) { setEpgData(data); setEpgLoading(false); }
+    });
+    return () => { cancelled = true; };
+  }, [channels]);
+
+  // ── EPG refresh interval ───────────────────────────────────────────────────
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const current = channelsRef.current;
+      if (current.length === 0) return;
+      const ids = current.map(ch => String(ch.id ?? ch.number));
+      fetchEPG(ids).then(data => setEpgData(data));
+    }, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // ── Filtered channels ──────────────────────────────────────────────────────
+  const displayChannels = useMemo(() =>
+    channels.filter(ch => {
+      const chLang  = ch.language ?? '';
+      const chGenre = ch.excelGenre || ch.group || '';
+      return (
+        (selectedLanguage === 'All' || chLang === selectedLanguage) &&
+        (selectedGenre    === 'All' || chGenre === selectedGenre)
+      );
+    }),
+    [channels, selectedLanguage, selectedGenre],
+  );
+
+  const showLeftPanel = isTV || isLandscape;
+
+  // ── Scroll to current channel once ─────────────────────────────────────────
+  const hasScrolledRef = useRef(false);
+  useEffect(() => { hasScrolledRef.current = false; }, [displayChannels.length]);
+
+  const handleLayout = useCallback(() => {
+    if (hasScrolledRef.current || !currentChannel || displayChannels.length === 0) return;
+    const idx = displayChannels.findIndex(ch => ch.id === currentChannel.id);
+    if (idx > 0) {
+      flatListRef.current?.scrollToIndex({ index: idx, animated: false, viewPosition: 0.3 });
+      hasScrolledRef.current = true;
+    }
+  }, [displayChannels, currentChannel]);
+
+  // ── Filter handlers ────────────────────────────────────────────────────────
+  const handleLanguageChange = useCallback((lang: string) => {
+    setSelectedLanguage(lang);
+    focusedIndexRef.current = null;
+  }, []);
+
+  const handleGenreChange = useCallback((genre: string) => {
+    setSelectedGenre(genre);
+    focusedIndexRef.current = null;
+  }, []);
+
+  // ── Channel press ──────────────────────────────────────────────────────────
+  const handleChannelPress = useCallback((channel: Channel, index: number) => {
+    onActivity?.();
+    onChannelSelect(channel.number ?? index + 1);
+  }, [onChannelSelect, onActivity]);
+
+  // ── FlatList helpers ───────────────────────────────────────────────────────
+  const handleScrollToIndexFailed = useCallback(
+    (info: { index: number; highestMeasuredFrameIndex: number }) => {
+      setTimeout(() => {
+        flatListRef.current?.scrollToIndex({
+          index: Math.min(info.index, info.highestMeasuredFrameIndex),
+          animated: false, viewPosition: 0.3,
+        });
+      }, 100);
+    }, [],
+  );
+
+  const getItemLayout = useCallback(
+    (_: any, index: number) => ({
+      length: showLeftPanel ? ITEM_HEIGHT : 62,
+      offset: (showLeftPanel ? ITEM_TOTAL : 65) * index,
+      index,
+    }),
+    [showLeftPanel],
+  );
+
+  const keyExtractor = useCallback(
+    (item: Channel, index: number) => String(item.id ?? `ch-${index}`),
+    [],
+  );
+
+  // ── renderItem ─────────────────────────────────────────────────────────────
+  const renderItem = useCallback(
+    ({ item, index }: { item: Channel; index: number }) =>
+      showLeftPanel ? (
+        <ChannelRow
+          channel={item}
+          index={index}
+          isActive={currentChannel?.id === item.id}
+          isFocused={focusedIndexRef.current === index}
+          isFirst={index === 0}
+          onPress={() => handleChannelPress(item, index)}
+          onFocusRow={() => {
+            focusedIndexRef.current = index;
+            forceUpdate(n => n + 1);
+          }}
+          onBlurRow={() => {
+            if (focusedIndexRef.current === index) {
+              focusedIndexRef.current = null;
+              forceUpdate(n => n + 1);
+            }
+          }}
+          onActivity={onActivity}
+          epgData={epgData}
+        />
+      ) : (
+        <PortraitChannelRow
+          channel={item}
+          index={index}
+          isActive={currentChannel?.id === item.id}
+          onPress={() => handleChannelPress(item, index)}
+          epgData={epgData}
+        />
+      ),
+    [currentChannel, handleChannelPress, onActivity, epgData, showLeftPanel],
+  );
+
+  // ── Render ─────────────────────────────────────────────────────────────────
+  return (
+    <View style={[mainStyles.root, isDropdownOpen && { overflow: 'visible' }]}>
+      {isTV && (
+        <LeftPanel
+          channels={channels}
+          selectedLanguage={selectedLanguage}
+          selectedGenre={selectedGenre}
+          onLanguageChange={handleLanguageChange}
+          onGenreChange={handleGenreChange}
+          onActivity={onActivity}
+        />
+      )}
+      {!isTV && isLandscape && (
+        <FilterDropdowns
+          channels={channels}
+          selectedLanguage={selectedLanguage}
+          selectedGenre={selectedGenre}
+          onLanguageChange={handleLanguageChange}
+          onGenreChange={handleGenreChange}
+          onDropdownOpenChange={setIsDropdownOpen}
+        />
+      )}
+      <View style={mainStyles.listArea}>
+        {!showLeftPanel && (
+          <PortraitFilters
+            selectedLanguage={selectedLanguage}
+            selectedGenre={selectedGenre}
+            onLanguageChange={handleLanguageChange}
+            onGenreChange={handleGenreChange}
+            onActivity={onActivity}
+          />
+        )}
+        {showLeftPanel && (
+          <ChannelListHeader
+            count={displayChannels.length}
+            epgLoading={epgLoading}
+            selectedLanguage={selectedLanguage}
+            selectedGenre={selectedGenre}
+          />
+        )}
+        <FlatList
+          ref={flatListRef}
+          data={displayChannels}
+          renderItem={renderItem}
+          keyExtractor={keyExtractor}
+          style={mainStyles.list}
+          contentContainerStyle={mainStyles.listContent}
+          showsVerticalScrollIndicator={false}
+          getItemLayout={getItemLayout}
+          onScrollToIndexFailed={handleScrollToIndexFailed}
+          onLayout={handleLayout}
+          onScroll={() => onActivity?.()}
+          scrollEventThrottle={200}
+          onMomentumScrollBegin={() => onActivity?.()}
+          removeClippedSubviews={isTV}
+          disableIntervalMomentum
+          windowSize={isTV ? 21 : 9}
+          maxToRenderPerBatch={isTV ? 30 : 14}
+          initialNumToRender={isTV ? 30 : 16}
+          keyboardShouldPersistTaps="always"
+          ListEmptyComponent={
+            <View style={mainStyles.emptyState}>
+              <Icon name="television-off" size={42} color="#1e293b" />
+              <Text style={mainStyles.emptyTitle}>No channels found</Text>
+              <Text style={mainStyles.emptySubtitle}>
+                {selectedLanguage !== 'All' || selectedGenre !== 'All'
+                  ? 'Try changing Language or Genre filter'
+                  : 'Add channels to your playlist'}
+              </Text>
+            </View>
+          }
+        />
+        <View style={mainStyles.footer}>
+          <View style={mainStyles.legend}>
+            <View style={mainStyles.legendItem}>
+              <View style={[mainStyles.legendDot, { backgroundColor: '#ef4444' }]} />
+              <Text style={mainStyles.legendText}>Live</Text>
+            </View>
+            <View style={mainStyles.legendItem}>
+              <Icon name="star" size={9} color="#fbbf24" />
+              <Text style={mainStyles.legendText}>Favourite</Text>
+            </View>
+            <View style={mainStyles.legendItem}>
+              <View style={[mainStyles.legendDot, { backgroundColor: '#3b82f6' }]} />
+              <Text style={mainStyles.legendText}>HD</Text>
+            </View>
+          </View>
+          <Text style={mainStyles.footerCount}>
+            {displayChannels.length} of {channels.length} ch
+          </Text>
+        </View>
+      </View>
+    </View>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Stylesheets (from unoptimized version)
+// ─────────────────────────────────────────────────────────────────────────────
 
 const wheelStyles = StyleSheet.create({
   container: {
@@ -342,101 +1044,13 @@ const wheelStyles = StyleSheet.create({
   },
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// LeftPanel — side‑by‑side wheel pickers for Language & Genre
-// ─────────────────────────────────────────────────────────────────────────────
-interface LeftPanelProps {
-  channels: Channel[];
-  selectedLanguage: string;
-  selectedGenre: string;
-  onLanguageChange: (lang: string) => void;
-  onGenreChange: (genre: string) => void;
-  onActivity?: () => void;
-}
-
-const LeftPanel: React.FC<LeftPanelProps> = ({
-  channels,
-  selectedLanguage,
-  selectedGenre,
-  onLanguageChange,
-  onGenreChange,
-  onActivity,
-}) => {
-  // Count channels per language
-  const langCounts = useMemo(() => {
-    const map: Record<string, number> = {};
-    channels.forEach(ch => {
-      const lang = ch.language ?? '';
-      if (lang) map[lang] = (map[lang] ?? 0) + 1;
-    });
-    return map;
-  }, [channels]);
-
-  // Count channels per genre
-  const genreCounts = useMemo(() => {
-    const map: Record<string, number> = {};
-    channels.forEach(ch => {
-      const genre = ch.excelGenre || ch.group || '';
-      if (genre) map[genre] = (map[genre] ?? 0) + 1;
-    });
-    return map;
-  }, [channels]);
-
-  const handleLanguageChange = useCallback(
-    (value: string) => {
-      onActivity?.();
-      onLanguageChange(value);
-    },
-    [onLanguageChange, onActivity],
-  );
-
-  const handleGenreChange = useCallback(
-    (value: string) => {
-      onActivity?.();
-      onGenreChange(value);
-    },
-    [onGenreChange, onActivity],
-  );
-
-  return (
-    <View style={leftPanelStyles.panel}>
-      {/* Language wheel */}
-      <WheelPicker
-        data={LANGUAGES}
-        selectedValue={selectedLanguage}
-        onValueChange={handleLanguageChange}
-        counts={langCounts}
-        totalCount={channels.length}
-        label="LANGUAGE"
-        iconName="translate"
-        iconColor="#3b82f6"
-      />
-
-      {/* Divider between the two pickers */}
-      <View style={leftPanelStyles.divider} />
-
-      {/* Genre wheel */}
-      <WheelPicker
-        data={GENRES}
-        selectedValue={selectedGenre}
-        onValueChange={handleGenreChange}
-        counts={genreCounts}
-        totalCount={channels.length}
-        label="GENRE"
-        iconName="filmstrip"
-        iconColor="#8b5cf6"
-      />
-    </View>
-  );
-};
-
 const leftPanelStyles = StyleSheet.create({
   panel: {
     width: LEFT_PANEL_W,
     backgroundColor: 'rgba(5,10,25,0.98)',
     borderRightWidth: 1,
     borderRightColor: '#0f172a',
-    flexDirection: 'row',          // side‑by‑side
+    flexDirection: 'row',
     alignItems: 'stretch',
   },
   divider: {
@@ -445,103 +1059,6 @@ const leftPanelStyles = StyleSheet.create({
     marginVertical: 0,
   },
 });
-
-// ─────────────────────────────────────────────────────────────────────────────
-// FilterDropdown – dropdown button for phone landscape
-// ─────────────────────────────────────────────────────────────────────────────
-interface FilterDropdownProps {
-  label: string;
-  iconName: string;
-  iconColor: string;
-  data: string[];
-  selectedValue: string;
-  onSelect: (value: string) => void;
-  counts?: Record<string, number>;
-  totalCount?: number;
-  onOpen?: () => void;   // NEW: called when dropdown opens
-  onClose?: () => void;  // NEW: called when dropdown closes
-}
-
-const FilterDropdown: React.FC<FilterDropdownProps> = ({
-  label,
-  iconName,
-  iconColor,
-  data,
-  selectedValue,
-  onSelect,
-  counts,
-  totalCount,
-  onOpen,
-  onClose,
-}) => {
-  const [visible, setVisible] = useState(false);
-
-  // Notify parent when visibility changes
-  useEffect(() => {
-    visible ? onOpen?.() : onClose?.();
-  }, [visible, onOpen, onClose]);
-
-  return (
-    <View style={dropdownStyles.container}>
-      <Pressable
-        style={dropdownStyles.button}
-        onPress={() => setVisible(true)}
-        accessible
-        accessibilityLabel={`${label}: ${selectedValue}`}
-        accessibilityRole="button"
-      >
-        <Icon name={iconName} size={14} color={iconColor} />
-        <Text style={dropdownStyles.buttonText} numberOfLines={1}>
-          {selectedValue}
-        </Text>
-        <Icon name="chevron-down" size={14} color="#64748b" />
-      </Pressable>
-
-      {/* Overlay + menu */}
-      {visible && (
-        <Pressable style={dropdownStyles.overlay} onPress={() => setVisible(false)}>
-          <View style={dropdownStyles.menu}>
-            <ScrollView
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="always"
-              style={dropdownStyles.menuScroll}
-            >
-              {data.map(item => {
-                const count = counts ? (item === 'All' ? totalCount ?? 0 : counts[item] ?? 0) : undefined;
-                return (
-                  <Pressable
-                    key={item}
-                    style={[
-                      dropdownStyles.menuItem,
-                      selectedValue === item && dropdownStyles.menuItemActive,
-                    ]}
-                    onPress={() => {
-                      onSelect(item);
-                      setVisible(false);
-                    }}
-                  >
-                    <Text
-                      style={[
-                        dropdownStyles.menuItemText,
-                        selectedValue === item && dropdownStyles.menuItemTextActive,
-                      ]}
-                      numberOfLines={1}
-                    >
-                      {item}
-                    </Text>
-                    {count !== undefined && (
-                      <Text style={dropdownStyles.menuItemCount}>{count}</Text>
-                    )}
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-          </View>
-        </Pressable>
-      )}
-    </View>
-  );
-};
 
 const dropdownStyles = StyleSheet.create({
   container: {
@@ -621,22 +1138,9 @@ const dropdownStyles = StyleSheet.create({
   },
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// FilterDropdowns – side‑by‑side dropdowns for phone landscape
-// VERTICAL LAYOUT NOW (Language on top, Genre below)
-// ─────────────────────────────────────────────────────────────────────────────
-interface FilterDropdownsProps {
-  channels: Channel[];
-  selectedLanguage: string;
-  selectedGenre: string;
-  onLanguageChange: (lang: string) => void;
-  onGenreChange: (genre: string) => void;
-  onDropdownOpenChange?: (isOpen: boolean) => void; // NEW
-}
-
 const dropdownsStyles = StyleSheet.create({
   container: {
-    flexDirection: 'column',          // stack vertically
+    flexDirection: 'column',
     width: LEFT_PANEL_W,
     backgroundColor: 'rgba(5,10,25,0.98)',
     borderRightWidth: 1,
@@ -645,154 +1149,6 @@ const dropdownsStyles = StyleSheet.create({
     paddingHorizontal: 6,
   },
 });
-
-const FilterDropdowns: React.FC<FilterDropdownsProps> = ({
-  channels,
-  selectedLanguage,
-  selectedGenre,
-  onLanguageChange,
-  onGenreChange,
-  onDropdownOpenChange,
-}) => {
-  const langCounts = useMemo(() => {
-    const map: Record<string, number> = {};
-    channels.forEach(ch => {
-      const lang = ch.language ?? '';
-      if (lang) map[lang] = (map[lang] ?? 0) + 1;
-    });
-    return map;
-  }, [channels]);
-
-  const genreCounts = useMemo(() => {
-    const map: Record<string, number> = {};
-    channels.forEach(ch => {
-      const genre = ch.excelGenre || ch.group || '';
-      if (genre) map[genre] = (map[genre] ?? 0) + 1;
-    });
-    return map;
-  }, [channels]);
-
-  // Track number of open child dropdowns
-  const openCountRef = useRef(0);
-
-  const handleOpen = useCallback(() => {
-    openCountRef.current += 1;
-    onDropdownOpenChange?.(true);
-  }, [onDropdownOpenChange]);
-
-  const handleClose = useCallback(() => {
-    openCountRef.current = Math.max(0, openCountRef.current - 1);
-    if (openCountRef.current === 0) {
-      onDropdownOpenChange?.(false);
-    }
-  }, [onDropdownOpenChange]);
-
-  return (
-    <View style={dropdownsStyles.container}>
-      <FilterDropdown
-        label="Language"
-        iconName="translate"
-        iconColor="#3b82f6"
-        data={LANGUAGES}
-        selectedValue={selectedLanguage}
-        onSelect={onLanguageChange}
-        counts={langCounts}
-        totalCount={channels.length}
-        onOpen={handleOpen}
-        onClose={handleClose}
-      />
-      {/* Spacer between the two dropdowns */}
-      <View style={{ height: 6 }} />
-      <FilterDropdown
-        label="Genre"
-        iconName="filmstrip"
-        iconColor="#8b5cf6"
-        data={GENRES}
-        selectedValue={selectedGenre}
-        onSelect={onGenreChange}
-        counts={genreCounts}
-        totalCount={channels.length}
-        onOpen={handleOpen}
-        onClose={handleClose}
-      />
-    </View>
-  );
-};
-
-// ─────────────────────────────────────────────────────────────────────────────
-// PortraitFilters — horizontal chips for portrait phone mode
-// ─────────────────────────────────────────────────────────────────────────────
-interface PortraitFiltersProps {
-  selectedLanguage: string;
-  selectedGenre: string;
-  onLanguageChange: (lang: string) => void;
-  onGenreChange: (genre: string) => void;
-  onActivity?: () => void;
-}
-
-const PortraitFilters: React.FC<PortraitFiltersProps> = ({
-  selectedLanguage,
-  selectedGenre,
-  onLanguageChange,
-  onGenreChange,
-  onActivity,
-}) => (
-  <View style={portraitFilterStyles.wrapper}>
-    {/* Language row */}
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      style={portraitFilterStyles.row}
-      keyboardShouldPersistTaps="always"
-    >
-      {LANGUAGES.map(lang => (
-        <Pressable
-          key={lang}
-          style={[
-            portraitFilterStyles.chip,
-            selectedLanguage === lang && portraitFilterStyles.chipActive,
-            selectedLanguage === lang && portraitFilterStyles.chipLangActive,
-          ]}
-          onPress={() => { onActivity?.(); onLanguageChange(lang); }}
-        >
-          <Text style={[
-            portraitFilterStyles.chipText,
-            selectedLanguage === lang && portraitFilterStyles.chipTextActive,
-          ]}>
-            {lang}
-          </Text>
-        </Pressable>
-      ))}
-    </ScrollView>
-
-    {/* Genre row */}
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      style={portraitFilterStyles.row}
-      keyboardShouldPersistTaps="always"
-    >
-      {GENRES.map(genre => (
-        <Pressable
-          key={genre}
-          style={[
-            portraitFilterStyles.chip,
-            selectedGenre === genre && portraitFilterStyles.chipActive,
-            selectedGenre === genre && portraitFilterStyles.chipGenreActive,
-          ]}
-          onPress={() => { onActivity?.(); onGenreChange(genre); }}
-        >
-          <Text style={[
-            portraitFilterStyles.chipText,
-            selectedGenre === genre && portraitFilterStyles.chipTextActive,
-          ]}>
-            {genre}
-          </Text>
-        </Pressable>
-      ))}
-    </ScrollView>
-  </View>
-);
 
 const portraitFilterStyles = StyleSheet.create({
   wrapper: {
@@ -837,21 +1193,6 @@ const portraitFilterStyles = StyleSheet.create({
   },
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ProgressBar — thin playback progress indicator
-// ─────────────────────────────────────────────────────────────────────────────
-const ProgressBar: React.FC<{ progress: number; isActive: boolean }> = ({ progress, isActive }) => (
-  <View style={progressStyles.track}>
-    <View
-      style={[
-        progressStyles.fill,
-        { width: `${Math.min(100, Math.max(0, progress))}%` as any },
-        isActive && progressStyles.fillActive,
-      ]}
-    />
-  </View>
-);
-
 const progressStyles = StyleSheet.create({
   track: {
     flex: 1,
@@ -867,139 +1208,6 @@ const progressStyles = StyleSheet.create({
   },
   fillActive: { backgroundColor: '#3b82f6' },
 });
-
-// ─────────────────────────────────────────────────────────────────────────────
-// ChannelRow — TiviMate-style landscape/TV row
-// ─────────────────────────────────────────────────────────────────────────────
-interface ChannelRowProps {
-  channel: Channel;
-  index: number;
-  isActive: boolean;
-  isFocused: boolean;
-  isFirst: boolean;
-  onPress: () => void;
-  onFocusRow: () => void;
-  onBlurRow: () => void;
-  onActivity?: () => void;
-  epgData: Map<string, EPGChannel>;
-}
-
-const ChannelRow: React.FC<ChannelRowProps> = ({
-  channel, index, isActive, isFocused, isFirst,
-  onPress, onFocusRow, onBlurRow, onActivity, epgData,
-}) => {
-  const { current, next } = getCurrentAndNext(epgData, String(channel.id ?? channel.number));
-  const progress = current ? getProgramProgress(current) : 0;
-  const hasLogo = !!channel.logo;
-
-  return (
-    <Pressable
-      focusable
-      hasTVPreferredFocus={isFirst && isTV}
-      style={[
-        rowStyles.row,
-        isActive && rowStyles.rowActive,
-        isFocused && rowStyles.rowFocused,
-      ]}
-      onPress={onPress}
-      onFocus={() => { onFocusRow(); onActivity?.(); }}
-      onBlur={onBlurRow}
-      accessible
-      accessibilityLabel={`Channel ${channel.number ?? index + 1}: ${channel.name}`}
-      accessibilityRole="button"
-      accessibilityState={{ selected: isActive }}
-    >
-      {/* Active left accent bar */}
-      {isActive && <View style={rowStyles.activeBar} />}
-
-      {/* ── Logo block ── */}
-      <View style={rowStyles.logoBlock}>
-        <View style={[rowStyles.logoCard, isActive && rowStyles.logoCardActive]}>
-          {hasLogo ? (
-            <Image
-              source={{ uri: channel.logo }}
-              style={rowStyles.logoImg}
-              resizeMode="contain"
-            />
-          ) : (
-            <Text style={[rowStyles.logoFallback, isActive && rowStyles.logoFallbackActive]} numberOfLines={2}>
-              {channel.name}
-            </Text>
-          )}
-        </View>
-        <Text style={[rowStyles.chNum, isActive && rowStyles.chNumActive]}>
-          {channel.number ?? index + 1}
-        </Text>
-      </View>
-
-      {/* ── Main info ── */}
-      <View style={rowStyles.mainInfo}>
-        {/* Channel name + badges row */}
-        <View style={rowStyles.nameRow}>
-          <Text
-            style={[rowStyles.channelName, isActive && rowStyles.channelNameActive]}
-            numberOfLines={1}
-          >
-            {channel.name}
-          </Text>
-          <View style={rowStyles.badges}>
-            {channel.isHD && (
-              <View style={[rowStyles.hdBadge, isActive && rowStyles.hdBadgeActive]}>
-                <Text style={rowStyles.hdText}>HD</Text>
-              </View>
-            )}
-            {channel.isFavorite && (
-              <Icon name="star" size={11} color={isActive ? '#fbbf24' : '#78350f'} />
-            )}
-          </View>
-        </View>
-
-        {/* Current program */}
-        {current ? (
-          <>
-            <View style={rowStyles.programRow}>
-              <View style={[rowStyles.liveIndicator, isActive && rowStyles.liveIndicatorActive]} />
-              <Text
-                style={[rowStyles.programTitle, isActive && rowStyles.programTitleActive]}
-                numberOfLines={1}
-              >
-                {current.title}
-              </Text>
-            </View>
-            {/* Time + Progress */}
-            <View style={rowStyles.progressRow}>
-              <Text style={[rowStyles.timeText, isActive && rowStyles.timeTextActive]}>
-                {formatTime(current.startTime)}
-              </Text>
-              <ProgressBar progress={progress} isActive={isActive} />
-              <Text style={[rowStyles.timeText, isActive && rowStyles.timeTextActive]}>
-                {formatTime(current.endTime)}
-              </Text>
-            </View>
-          </>
-        ) : (
-          <Text style={rowStyles.noInfo}>No program information</Text>
-        )}
-      </View>
-
-      {/* ── Next program ── */}
-      {next && (
-        <View style={rowStyles.nextBlock}>
-          <Text style={rowStyles.nextLabel}>NEXT</Text>
-          <Text
-            style={[rowStyles.nextTitle, isActive && rowStyles.nextTitleActive]}
-            numberOfLines={2}
-          >
-            {next.title}
-          </Text>
-          <Text style={[rowStyles.nextTime, isActive && rowStyles.nextTimeActive]}>
-            {formatTime(next.startTime)}
-          </Text>
-        </View>
-      )}
-    </Pressable>
-  );
-};
 
 const rowStyles = StyleSheet.create({
   row: {
@@ -1034,8 +1242,6 @@ const rowStyles = StyleSheet.create({
     backgroundColor: '#3b82f6',
     zIndex: 2,
   },
-
-  // Logo
   logoBlock: {
     width: isTV ? 88 : 72,
     height: '100%',
@@ -1078,8 +1284,6 @@ const rowStyles = StyleSheet.create({
     letterSpacing: 0.4,
   },
   chNumActive: { color: '#3b82f6' },
-
-  // Main info
   mainInfo: {
     flex: 1,
     paddingVertical: 8,
@@ -1160,8 +1364,6 @@ const rowStyles = StyleSheet.create({
     color: '#1e293b',
     fontStyle: 'italic',
   },
-
-  // Next program block
   nextBlock: {
     width: isTV ? 120 : 98,
     paddingHorizontal: 8,
@@ -1193,101 +1395,6 @@ const rowStyles = StyleSheet.create({
   },
   nextTimeActive: { color: '#3b82f6' },
 });
-
-// ─────────────────────────────────────────────────────────────────────────────
-// PortraitChannelRow — compact card style for portrait phone
-// ─────────────────────────────────────────────────────────────────────────────
-interface PortraitRowProps {
-  channel: Channel;
-  index: number;
-  isActive: boolean;
-  onPress: () => void;
-  epgData: Map<string, EPGChannel>;
-}
-
-const PortraitChannelRow: React.FC<PortraitRowProps> = ({
-  channel, index, isActive, onPress, epgData,
-}) => {
-  const { current } = getCurrentAndNext(epgData, String(channel.id ?? channel.number));
-  const progress = current ? getProgramProgress(current) : 0;
-  const hasLogo = !!channel.logo;
-
-  return (
-    <Pressable
-      style={[portraitRowStyles.row, isActive && portraitRowStyles.rowActive]}
-      onPress={onPress}
-      accessible
-      accessibilityLabel={`Channel ${channel.number ?? index + 1}: ${channel.name}`}
-      accessibilityRole="button"
-      accessibilityState={{ selected: isActive }}
-    >
-      {isActive && <View style={portraitRowStyles.activeBar} />}
-
-      {/* Logo */}
-      <View style={[portraitRowStyles.logoCard, isActive && portraitRowStyles.logoCardActive]}>
-        {hasLogo ? (
-          <Image source={{ uri: channel.logo }} style={portraitRowStyles.logoImg} resizeMode="contain" />
-        ) : (
-          <Text style={[portraitRowStyles.logoFallback, isActive && portraitRowStyles.logoFallbackActive]} numberOfLines={2}>
-            {channel.name}
-          </Text>
-        )}
-      </View>
-
-      {/* Info */}
-      <View style={portraitRowStyles.info}>
-        <View style={portraitRowStyles.topRow}>
-          <Text
-            style={[portraitRowStyles.name, isActive && portraitRowStyles.nameActive]}
-            numberOfLines={1}
-          >
-            {channel.name}
-          </Text>
-          {channel.isHD && (
-            <View style={[portraitRowStyles.hdBadge, isActive && portraitRowStyles.hdBadgeActive]}>
-              <Text style={portraitRowStyles.hdText}>HD</Text>
-            </View>
-          )}
-          {channel.isFavorite && (
-            <Icon name="star" size={10} color={isActive ? '#fbbf24' : '#78350f'} />
-          )}
-        </View>
-
-        {current ? (
-          <>
-            <Text
-              style={[portraitRowStyles.program, isActive && portraitRowStyles.programActive]}
-              numberOfLines={1}
-            >
-              {current.title}
-            </Text>
-            <View style={portraitRowStyles.progressRow}>
-              <View style={portraitRowStyles.progressTrack}>
-                <View
-                  style={[
-                    portraitRowStyles.progressFill,
-                    { width: `${progress}%` as any },
-                    isActive && portraitRowStyles.progressFillActive,
-                  ]}
-                />
-              </View>
-              <Text style={[portraitRowStyles.timeText, isActive && portraitRowStyles.timeTextActive]}>
-                {formatTime(current.endTime)}
-              </Text>
-            </View>
-          </>
-        ) : (
-          <Text style={portraitRowStyles.noInfo}>No info</Text>
-        )}
-      </View>
-
-      {/* Ch number */}
-      <Text style={[portraitRowStyles.chNum, isActive && portraitRowStyles.chNumActive]}>
-        {channel.number ?? index + 1}
-      </Text>
-    </Pressable>
-  );
-};
 
 const portraitRowStyles = StyleSheet.create({
   row: {
@@ -1335,7 +1442,6 @@ const portraitRowStyles = StyleSheet.create({
   logoImg: { width: '90%', height: '90%' },
   logoFallback: { fontSize: 9, color: '#475569', fontWeight: '700', textAlign: 'center', paddingHorizontal: 2 },
   logoFallbackActive: { color: '#93c5fd' },
-
   info: { flex: 1, gap: 3 },
   topRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   name: { flex: 1, fontSize: 13, fontWeight: '700', color: '#94a3b8' },
@@ -1379,44 +1485,6 @@ const portraitRowStyles = StyleSheet.create({
   chNumActive: { color: '#3b82f6' },
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ChannelListHeader — shown above the FlatList (landscape/TV)
-// ─────────────────────────────────────────────────────────────────────────────
-const ChannelListHeader: React.FC<{
-  count: number;
-  epgLoading: boolean;
-  selectedLanguage: string;
-  selectedGenre: string;
-}> = ({ count, epgLoading, selectedLanguage, selectedGenre }) => (
-  <View style={listHeaderStyles.container}>
-    <View style={listHeaderStyles.left}>
-      <Icon name="television-play" size={13} color="#3b82f6" />
-      <Text style={listHeaderStyles.label}>
-        {count} Channel{count !== 1 ? 's' : ''}
-      </Text>
-      {selectedLanguage !== 'All' && (
-        <View style={listHeaderStyles.filterTag}>
-          <Icon name="translate" size={10} color="#60a5fa" />
-          <Text style={listHeaderStyles.filterTagText}>{selectedLanguage}</Text>
-        </View>
-      )}
-      {selectedGenre !== 'All' && (
-        <View style={[listHeaderStyles.filterTag, listHeaderStyles.filterTagGenre]}>
-          <Icon name="filmstrip" size={10} color="#a78bfa" />
-          <Text style={[listHeaderStyles.filterTagText, listHeaderStyles.filterTagTextGenre]}>{selectedGenre}</Text>
-        </View>
-      )}
-    </View>
-    <View style={listHeaderStyles.right}>
-      <Icon name="clock-outline" size={12} color="#374151" />
-      <Text style={listHeaderStyles.epgLabel}>Now Playing</Text>
-      <Icon name="arrow-right" size={11} color="#1e293b" />
-      <Text style={listHeaderStyles.nextLabel}>Up Next</Text>
-      {epgLoading && <Text style={listHeaderStyles.updating}>Updating…</Text>}
-    </View>
-  </View>
-);
-
 const listHeaderStyles = StyleSheet.create({
   container: {
     flexDirection: 'row',
@@ -1453,257 +1521,6 @@ const listHeaderStyles = StyleSheet.create({
   updating: { fontSize: 10, color: '#3b82f6', marginLeft: 4 },
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Main ChannelList component
-// ─────────────────────────────────────────────────────────────────────────────
-interface Props {
-  channels: Channel[];
-  currentChannel: Channel | null;
-  onChannelSelect: (channelNumber: number) => void;
-  channelPage: number;
-  setChannelPage: (page: number) => void;
-  onActivity?: () => void;
-  showEPG?: boolean;
-  isLandscape?: boolean;
-}
-
-const ChannelList: React.FC<Props> = ({
-  channels,
-  currentChannel,
-  onChannelSelect,
-  onActivity,
-  showEPG = true,
-  isLandscape = false,
-}) => {
-  const flatListRef = useRef<FlatList>(null);
-
-  // ── Local filter state ──────────────────────────────────────────────────────
-  const [selectedLanguage, setSelectedLanguage] = useState('All');
-  const [selectedGenre, setSelectedGenre]       = useState('All');
-  const [focusedIndex, setFocusedIndex]         = useState<number | null>(null);
-
-  // ── Dropdown open state (for landscape phone) ────────────────────────────
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-
-  // ── EPG state ───────────────────────────────────────────────────────────────
-  const [epgData, setEpgData]     = useState<Map<string, EPGChannel>>(new Map());
-  const [epgLoading, setEpgLoading] = useState(false);
-
-  useEffect(() => {
-    if (channels.length === 0) return;
-    let cancelled = false;
-    setEpgLoading(true);
-    const ids = channels.map(ch => String(ch.id ?? ch.number));
-    fetchEPG(ids).then((data: Map<string, EPGChannel>) => {
-      if (!cancelled) { setEpgData(data); setEpgLoading(false); }
-    });
-    return () => { cancelled = true; };
-  }, [channels]);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (channels.length === 0) return;
-      const ids = channels.map(ch => String(ch.id ?? ch.number));
-      fetchEPG(ids).then(setEpgData);
-    }, 5 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, [channels]);
-
-  // ── Filtered channels ───────────────────────────────────────────────────────
-  const displayChannels = useMemo(() => {
-    return channels.filter(ch => {
-      const chLang  = ch.language ?? '';
-      const chGenre = ch.excelGenre || ch.group || '';
-
-      const langMatch  = selectedLanguage === 'All' || chLang === selectedLanguage;
-      const genreMatch = selectedGenre === 'All'    || chGenre === selectedGenre;
-      return langMatch && genreMatch;
-    });
-  }, [channels, selectedLanguage, selectedGenre]);
-
-  // ── Show left panel in landscape + TV ──────────────────────────────────────
-  const showLeftPanel = isTV || isLandscape;
-
-  // ── Handlers ────────────────────────────────────────────────────────────────
-  const handleChannelPress = useCallback(
-    (channel: Channel, index: number) => {
-      onActivity?.();
-      onChannelSelect(channel.number ?? index + 1);
-    },
-    [onChannelSelect, onActivity],
-  );
-
-  const handleScrollToIndexFailed = useCallback(
-    (info: { index: number; highestMeasuredFrameIndex: number }) => {
-      setTimeout(() => {
-        flatListRef.current?.scrollToIndex({
-          index: Math.min(info.index, info.highestMeasuredFrameIndex),
-          animated: false,
-          viewPosition: 0.3,
-        });
-      }, 100);
-    },
-    [],
-  );
-
-  const handleLayout = useCallback(() => {
-    if (!currentChannel || displayChannels.length === 0) return;
-    const idx = displayChannels.findIndex(ch => ch.id === currentChannel.id);
-    if (idx > 0) {
-      flatListRef.current?.scrollToIndex({ index: idx, animated: false, viewPosition: 0.3 });
-    }
-  }, [displayChannels, currentChannel]);
-
-  const getItemLayout = useCallback(
-    (_: any, index: number) => ({
-      length: showLeftPanel ? ITEM_HEIGHT : 62,
-      offset: (showLeftPanel ? ITEM_TOTAL : 65) * index,
-      index,
-    }),
-    [showLeftPanel],
-  );
-
-  // ── Render item ─────────────────────────────────────────────────────────────
-  const renderItem = useCallback(
-    ({ item, index }: { item: Channel; index: number }) =>
-      showLeftPanel ? (
-        <ChannelRow
-          channel={item}
-          index={index}
-          isActive={currentChannel?.id === item.id}
-          isFocused={focusedIndex === index}
-          isFirst={index === 0}
-          onPress={() => handleChannelPress(item, index)}
-          onFocusRow={() => setFocusedIndex(index)}
-          onBlurRow={() => setFocusedIndex(prev => (prev === index ? null : prev))}
-          onActivity={onActivity}
-          epgData={epgData}
-        />
-      ) : (
-        <PortraitChannelRow
-          channel={item}
-          index={index}
-          isActive={currentChannel?.id === item.id}
-          onPress={() => handleChannelPress(item, index)}
-          epgData={epgData}
-        />
-      ),
-    [currentChannel, focusedIndex, handleChannelPress, onActivity, epgData, showLeftPanel],
-  );
-
-  const keyExtractor = useCallback(
-    (item: Channel, index: number) => String(item.id ?? `ch-${index}`),
-    [],
-  );
-
-  // ─────────────────────────────────────────────────────────────────────────
-  return (
-    <View style={[mainStyles.root, isDropdownOpen && { overflow: 'visible' }]}>
-      {/* ── Left panel ── */}
-      {isTV && (
-        <LeftPanel
-          channels={channels}
-          selectedLanguage={selectedLanguage}
-          selectedGenre={selectedGenre}
-          onLanguageChange={(lang) => { setSelectedLanguage(lang); setFocusedIndex(null); }}
-          onGenreChange={(genre) => { setSelectedGenre(genre); setFocusedIndex(null); }}
-          onActivity={onActivity}
-        />
-      )}
-      {!isTV && isLandscape && (
-        /* Phone landscape: dropdowns – now vertical + overflow control */
-        <FilterDropdowns
-          channels={channels}
-          selectedLanguage={selectedLanguage}
-          selectedGenre={selectedGenre}
-          onLanguageChange={(lang) => { setSelectedLanguage(lang); setFocusedIndex(null); }}
-          onGenreChange={(genre) => { setSelectedGenre(genre); setFocusedIndex(null); }}
-          onDropdownOpenChange={setIsDropdownOpen}
-        />
-      )}
-
-      {/* ── Right: channel list ── */}
-      <View style={mainStyles.listArea}>
-        {/* Portrait filters (chips) */}
-        {!showLeftPanel && (
-          <PortraitFilters
-            selectedLanguage={selectedLanguage}
-            selectedGenre={selectedGenre}
-            onLanguageChange={(lang) => { setSelectedLanguage(lang); setFocusedIndex(null); }}
-            onGenreChange={(genre) => { setSelectedGenre(genre); setFocusedIndex(null); }}
-            onActivity={onActivity}
-          />
-        )}
-
-        {/* Landscape/TV header */}
-        {showLeftPanel && (
-          <ChannelListHeader
-            count={displayChannels.length}
-            epgLoading={epgLoading}
-            selectedLanguage={selectedLanguage}
-            selectedGenre={selectedGenre}
-          />
-        )}
-
-        {/* Channel FlatList */}
-        <FlatList
-          ref={flatListRef}
-          data={displayChannels}
-          renderItem={renderItem}
-          keyExtractor={keyExtractor}
-          style={mainStyles.list}
-          contentContainerStyle={mainStyles.listContent}
-          showsVerticalScrollIndicator={false}
-          getItemLayout={getItemLayout}
-          onScrollToIndexFailed={handleScrollToIndexFailed}
-          onLayout={handleLayout}
-          onScroll={() => onActivity?.()}
-          scrollEventThrottle={16}
-          onMomentumScrollBegin={() => onActivity?.()}
-          removeClippedSubviews={false}
-          disableIntervalMomentum
-          windowSize={isTV ? 21 : 9}
-          maxToRenderPerBatch={isTV ? 30 : 14}
-          initialNumToRender={isTV ? 30 : 16}
-          keyboardShouldPersistTaps="always"
-          ListEmptyComponent={
-            <View style={mainStyles.emptyState}>
-              <Icon name="television-off" size={42} color="#1e293b" />
-              <Text style={mainStyles.emptyTitle}>No channels found</Text>
-              <Text style={mainStyles.emptySubtitle}>
-                {selectedLanguage !== 'All' || selectedGenre !== 'All'
-                  ? 'Try changing Language or Genre filter'
-                  : 'Add channels to your playlist'}
-              </Text>
-            </View>
-          }
-        />
-
-        {/* Footer */}
-        <View style={mainStyles.footer}>
-          <View style={mainStyles.legend}>
-            <View style={mainStyles.legendItem}>
-              <View style={[mainStyles.legendDot, { backgroundColor: '#ef4444' }]} />
-              <Text style={mainStyles.legendText}>Live</Text>
-            </View>
-            <View style={mainStyles.legendItem}>
-              <Icon name="star" size={9} color="#fbbf24" />
-              <Text style={mainStyles.legendText}>Favourite</Text>
-            </View>
-            <View style={mainStyles.legendItem}>
-              <View style={[mainStyles.legendDot, { backgroundColor: '#3b82f6' }]} />
-              <Text style={mainStyles.legendText}>HD</Text>
-            </View>
-          </View>
-          <Text style={mainStyles.footerCount}>
-            {displayChannels.length} of {channels.length} ch
-          </Text>
-        </View>
-      </View>
-    </View>
-  );
-};
-
 const mainStyles = StyleSheet.create({
   root: {
     flex: 1,
@@ -1712,7 +1529,7 @@ const mainStyles = StyleSheet.create({
     borderRadius: isTV ? 16 : 12,
     borderWidth: 1,
     borderColor: '#0f172a',
-    overflow: 'hidden',           // default; becomes 'visible' when dropdown open
+    overflow: 'hidden',
   },
   listArea: {
     flex: 1,

@@ -9,7 +9,7 @@ import {
   Platform,
   StatusBar,
 } from 'react-native';
-import { StackNavigationProp } from '@react-navigation/stack';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../types/navigation';
 import { useChannelContext } from '../../context/ChannelContext';
 import { APP_CONFIG } from '../../constants/config';
@@ -37,7 +37,7 @@ const useSafeTVEvents = _useTVEventHandler ?? _noopHook;
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-type SimpleUIScreenNavigationProp = StackNavigationProp<RootStackParamList, 'SimpleUI'>;
+type SimpleUIScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'SimpleUI'>;
 
 interface Props {
   navigation: SimpleUIScreenNavigationProp;
@@ -50,6 +50,8 @@ const isTV = Platform.isTV;
 const VIDEO_PORTRAIT_HEIGHT_RATIO = 0.30;
 
 // ─────────────────────────────────────────────────────────────────────────────
+ const ACTIVE_MENU_DELAY  = 12_000;
+  const PASSIVE_MENU_DELAY = APP_CONFIG.CONTROLS_HIDE_DELAY;
 
 const SimpleUIScreen: React.FC<Props> = ({ navigation }) => {
   const { currentChannel, setCurrentChannel, filteredChannels, channels } =
@@ -60,17 +62,15 @@ const SimpleUIScreen: React.FC<Props> = ({ navigation }) => {
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ─── Timer ────────────────────────────────────────────────────────────────
-  const ACTIVE_MENU_DELAY  = 12_000;
-  const PASSIVE_MENU_DELAY = APP_CONFIG.CONTROLS_HIDE_DELAY;
-
-  const resetTimer = useCallback((active = false) => {
-    setShowControls(true);
-    if (hideTimer.current) clearTimeout(hideTimer.current);
-    hideTimer.current = setTimeout(
-      () => setShowControls(false),
-      active ? ACTIVE_MENU_DELAY : PASSIVE_MENU_DELAY,
-    );
-  }, []);
+ 
+const resetTimer = useCallback((active = false) => {
+  setShowControls(true);
+  if (hideTimer.current) clearTimeout(hideTimer.current);
+  hideTimer.current = setTimeout(
+    () => setShowControls(false),
+    active ? ACTIVE_MENU_DELAY : PASSIVE_MENU_DELAY,
+  );
+}, []); // setShowControls is stable from useState — safe to omit
 
   useEffect(() => {
     resetTimer();
@@ -78,15 +78,16 @@ const SimpleUIScreen: React.FC<Props> = ({ navigation }) => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useSafeTVEvents((_evt) => resetTimer());
+ const handleTVEvent = useCallback(() => resetTimer(), [resetTimer]);
+useSafeTVEvents(handleTVEvent);
 
-  const handleChannelChange = (channelNumber: number) => {
-    const channel = channels.find(ch => ch.number === channelNumber);
-    if (channel) {
-      setCurrentChannel(channel);
-      resetTimer();
-    }
-  };
+const handleChannelChange = useCallback((channelNumber: number) => {
+  const channel = channels.find(ch => ch.number === channelNumber);
+  if (channel) {
+    setCurrentChannel(channel);
+    resetTimer();
+  }
+}, [channels, setCurrentChannel, resetTimer]);
 
   // ─── Dimensions ───────────────────────────────────────────────────────────
   const screenHeight = height;
@@ -160,25 +161,16 @@ const SimpleUIScreen: React.FC<Props> = ({ navigation }) => {
             )}
           </View>
 
-          {/* Tap catcher */}
-          <Pressable
-            style={[StyleSheet.absoluteFill, styles.tapCatcher]}
-            onPress={() => resetTimer()}
-          />
-
-          {/* Invisible tap catcher when controls are hidden */}
-          {!showControls && (
-            <Pressable
-              style={[StyleSheet.absoluteFill, styles.tapCatcher, { zIndex: 10 }]}
-              onPress={() => resetTimer()}
-            />
-          )}
+        <Pressable
+  style={[StyleSheet.absoluteFill, styles.tapCatcher, { zIndex: showControls ? 1 : 10 }]}
+  onPress={() => resetTimer()}
+/>
 
           {/* Controls overlay */}
           {showControls && (
             <View style={styles.controlsOverlay}>
               {/* Scrim */}
-              <View style={styles.scrim} pointerEvents="none" />
+<View style={[styles.scrim, { pointerEvents: 'none' }]} />
 
               {/* Top bar */}
               <View style={[styles.topBar, { height: topBarHeight }]}>
@@ -252,14 +244,15 @@ const logoStyles = StyleSheet.create({
 });
 
 const SettingsButton: React.FC<{ onPress: () => void }> = ({ onPress }) => (
-  <TouchableOpacity
+  <Pressable
     style={settingsStyles.btn}
     onPress={onPress}
     hasTVPreferredFocus={false}
     accessibilityLabel="Settings"
+    accessible={true}
   >
     <Icon name="cog-outline" size={isTV ? 26 : 20} color="#94a3b8" />
-  </TouchableOpacity>
+  </Pressable>
 );
 
 const settingsStyles = StyleSheet.create({

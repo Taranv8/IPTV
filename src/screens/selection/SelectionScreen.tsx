@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -10,14 +10,21 @@ import {
   Easing,
   DimensionValue,
 } from 'react-native';
-import { StackNavigationProp } from '@react-navigation/stack';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../types/navigation';
 import { APP_CONFIG } from '../../constants/config';
 import { useSettings } from '../../context/SettingsContext';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
-type SelectionScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Selection'>;
+type SelectionScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Selection'>;
 interface Props { navigation: SelectionScreenNavigationProp; }
+
+const FF = {
+  black:     Platform.OS === 'android' ? 'sans-serif-black'     : 'AvenirNext-Heavy',
+  medium:    Platform.OS === 'android' ? 'sans-serif-medium'    : 'AvenirNext-Medium',
+  condensed: Platform.OS === 'android' ? 'sans-serif-condensed' : 'AvenirNext-Regular',
+  light:     Platform.OS === 'android' ? 'sans-serif-light'     : 'AvenirNext-Regular',
+};
 
 // ─── Floating Star ────────────────────────────────────────────────────────────
 const FloatingStar: React.FC<{
@@ -129,17 +136,21 @@ useEffect(() => {
     bounceLoop(iconBounce2, 1200);
   }, []);
 
+
+  const handleNavigate = useCallback(async () => {
+  const current = selectedUIRef.current;
+  await setUIMode(current);
+  current === 'simple'
+    ? navigation.replace('SimpleUI', {})
+    : navigation.replace('AdvancedUI');
+}, [navigation, setUIMode]);
+
  useEffect(() => {
   const interval = setInterval(() => {
     setCountdown(prev => {
       if (prev <= 1) {
         clearInterval(interval);
-
-        // navigate AFTER state hits 0
-        setTimeout(() => {
-          handleNavigate();
-        }, 0);
-
+        setTimeout(() => handleNavigate(), 0);
         return 0;
       }
       return prev - 1;
@@ -147,26 +158,23 @@ useEffect(() => {
   }, 1000);
 
   return () => clearInterval(interval);
+}, [handleNavigate]);
+
+ 
+
+ const popCard = useCallback((scale: Animated.Value) => {
+  Animated.sequence([
+    Animated.timing(scale, { toValue: 0.94, duration: 80, useNativeDriver: true }),
+    Animated.spring(scale,  { toValue: 1,    tension: 220, friction: 7, useNativeDriver: true }),
+  ]).start();
 }, []);
 
- const handleNavigate = async () => {
-    const current = selectedUIRef.current;
-    await setUIMode(current);
-    current === 'simple' ? navigation.replace('SimpleUI', {}) : navigation.replace('AdvancedUI');
-  };
-
-  const popCard = (scale: Animated.Value) =>
-    Animated.sequence([
-      Animated.timing(scale, { toValue: 0.94, duration: 80, useNativeDriver: true }),
-      Animated.spring(scale,  { toValue: 1,    tension: 220, friction: 7, useNativeDriver: true }),
-    ]).start();
-
-  const handleSelect = (mode: 'simple' | 'advanced') => {
-    setSelectedUI(mode);
-    setFocusedUI(mode);
-    setCountdown(APP_CONFIG.UI_SELECTION_COUNTDOWN);
-    popCard(mode === 'simple' ? card1Scale : card2Scale);
-  };
+const handleSelect = useCallback((mode: 'simple' | 'advanced') => {
+  setSelectedUI(mode);
+  setFocusedUI(mode);
+  setCountdown(APP_CONFIG.UI_SELECTION_COUNTDOWN);
+  popCard(mode === 'simple' ? card1Scale : card2Scale);
+}, [popCard, card1Scale, card2Scale]);
 
   // ── Responsive token table ─────────────────────────────────────────────────
   //   isLandPhone  = landscape phone (most constrained on HEIGHT)
@@ -431,12 +439,7 @@ onBlur={() => setFocusedUI(prev => (prev === 'advanced' ? null : prev))}        
 };
 
 // ─── Font family aliases ──────────────────────────────────────────────────────
-const FF = {
-  black:     Platform.OS === 'android' ? 'sans-serif-black'     : 'AvenirNext-Heavy',
-  medium:    Platform.OS === 'android' ? 'sans-serif-medium'    : 'AvenirNext-Medium',
-  condensed: Platform.OS === 'android' ? 'sans-serif-condensed' : 'AvenirNext-Regular',
-  light:     Platform.OS === 'android' ? 'sans-serif-light'     : 'AvenirNext-Regular',
-};
+
 
 const styles = StyleSheet.create({
   // ─── Root — flex column: header | cards(flex:1) | bottom ─────────────────

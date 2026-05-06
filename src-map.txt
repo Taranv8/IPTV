@@ -19,14 +19,11 @@ src
 │   │   ├── Input.tsx
 │   │   ├── Loading.tsx
 │   │   └── Modal.tsx
-│   ├── player
-│   │   ├── PlayerControls.tsx
-│   │   ├── PlayerOverlay.tsx
-│   │   └── VideoPlayer.tsx
-│   └── ui
-│       ├── Header.tsx
-│       ├── Navigation.tsx
-│       └── StatusBar.tsx
+│   └── player
+│       ├── PlayerControls.tsx
+│       ├── PlayerOverlay.tsx
+│       ├── VideoErrorBoundary.tsx
+│       └── VideoPlayer.tsx
 ├── constants
 │   ├── channels.m3u8
 │   ├── channels.ts
@@ -40,7 +37,6 @@ src
 │   └── ThemeContext.tsx
 ├── hooks
 │   ├── useChannels.ts
-│   ├── useM3U.ts
 │   ├── useOrientation.ts
 │   ├── usePlayer.ts
 │   └── useSettings.ts
@@ -50,6 +46,8 @@ src
 ├── screens
 │   ├── advanced
 │   │   └── AdvancedUIScreen.tsx
+│   ├── ota
+│   │   └── OTAUpdateScreen.tsx
 │   ├── selection
 │   │   └── SelectionScreen.tsx
 │   ├── settings
@@ -62,15 +60,12 @@ src
 │   ├── api
 │   │   ├── apiClient.ts
 │   │   └── channelApi.ts
+│   ├── epgService.ts
 │   ├── error
 │   │   ├── CrashHandler.ts
 │   │   ├── ErrorLogger.ts
 │   │   └── ErrorReporter.ts
-│   ├── m3u
-│   │   ├── channels.m3u8
-│   │   ├── M3UFetcher.ts
-│   │   ├── M3UParser.ts
-│   │   └── M3UValidator.ts
+│   ├── OTAUpdateService.ts
 │   ├── storage
 │   │   ├── AsyncStorageService.ts
 │   │   ├── CacheService.ts
@@ -79,7 +74,6 @@ src
 │       └── StreamResolver.ts
 ├── types
 │   ├── channel.ts
-│   ├── m3u.ts
 │   ├── navigation.ts
 │   └── player.ts
 └── utils

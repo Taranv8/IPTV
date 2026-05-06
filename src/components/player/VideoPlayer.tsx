@@ -23,7 +23,7 @@
 //    reconnect that interrupts playback unnecessarily.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   StyleSheet,
@@ -33,7 +33,7 @@ import {
   AppState,
   AppStateStatus,
 } from 'react-native';
-import Video, { OnLoadData, OnProgressData, DRMType } from 'react-native-video';
+import Video, { OnLoadData,  DRMType } from 'react-native-video';
 import { Channel } from '../../types/channel';
 import {
   StreamResolver,
@@ -414,78 +414,83 @@ const VideoPlayerInner: React.FC<Props> = ({ channel }) => {
     } catch (e) { console.warn('[VideoPlayer] handleBuffer error:', e); }
   }, [clearStallTimer, startStallWatchdog]);
 
-  const handleError = useCallback((err: any) => {
-    try {
-      if (cancelledRef.current) return;
+  // Add this ref near your other refs
+const streamRef = useRef<ResolvedStream | null>(null);
+useEffect(() => { streamRef.current = stream; }, [stream]);
 
-      const code   = err?.error?.errorCode   as number | undefined;
-      const msg    = err?.error?.errorString as string | undefined;
-      const domain = err?.error?.domain      as string | undefined;
+// ─── Full handleError ─────────────────────────────────────────────────────────
 
-      console.error(`[VideoPlayer] ❌ ExoPlayer error | code=${code ?? 'n/a'} | ${msg ?? 'n/a'}`);
+const handleError = useCallback((err: any) => {
+  try {
+    if (cancelledRef.current) return;
 
-      clearAllTimers();
-      setErrorMessage(`[${code ?? '?'}] ${msg ?? 'Playback error'}`);
+    const code   = err?.error?.errorCode   as number | undefined;
+    const msg    = err?.error?.errorString as string | undefined;
+    const domain = err?.error?.domain      as string | undefined;
 
-      // ── Behind live window: seek, do NOT switch source ────────────────────
-      if (code === EXO_BEHIND_LIVE_WINDOW) {
-        setIsSpinnerVisible(true);
-        setSpinnerLabel('Catching up to live…');
-        seekToLiveEdge();
-        return;
-      }
+    console.error(`[VideoPlayer] ❌ ExoPlayer error | code=${code ?? 'n/a'} | ${msg ?? 'n/a'}`);
 
-      // ── Fatal source error: switch immediately ────────────────────────────
-      const skipNow = code !== undefined && SKIP_NOW_CODES.has(code);
-      if (skipNow) {
-        console.warn(`[VideoPlayer] Fatal error ${code} — skipping to next source now`);
-      }
+    clearAllTimers();
+    setErrorMessage(`[${code ?? '?'}] ${msg ?? 'Playback error'}`);
 
-      safeReport('Playback error', 'PLAYBACK_ERROR', {
-        channelId:   channel.id,
-        channelName: channel.name,
-        streamUrl:   stream?.url ?? channel.streamUrl,
-        streamType:  stream?.type,
-        hasDRM:      !!stream?.drm,
-        drmType:     stream?.drm?.type,
-        exoCode:     code,
-        exoMsg:      msg,
-        exoDomain:   domain,
-      });
+    // ── Behind live window: seek, do NOT switch source ──────────────────────
+    if (code === EXO_BEHIND_LIVE_WINDOW) {
+      setIsSpinnerVisible(true);
+      setSpinnerLabel('Catching up to live…');
+      seekToLiveEdge();
+      return;
+    }
 
-      // Always move to the NEXT source on any error.
-      // skipNow=true  → immediate switch (0ms delay)
-      // skipNow=false → RETRY_DELAY_MS delay before trying next source
-      scheduleRetryRef.current(skipNow);
+    // ── Fatal source error: switch immediately ──────────────────────────────
+    const skipNow = code !== undefined && SKIP_NOW_CODES.has(code);
+    if (skipNow) {
+      console.warn(`[VideoPlayer] Fatal error ${code} — skipping to next source now`);
+    }
 
-    } catch (e) { console.error('[VideoPlayer] handleError threw:', e); }
-  }, [clearAllTimers, seekToLiveEdge, channel, stream]);
+    // Always read from ref — never stale even if stream switched mid-flight
+    const currentStream = streamRef.current;
 
-  const handleProgress = useCallback((_: OnProgressData) => {}, []);
+    safeReport('Playback error', 'PLAYBACK_ERROR', {
+      channelId:   channel.id,
+      channelName: channel.name,
+      streamUrl:   currentStream?.url ?? channel.streamUrl,
+      streamType:  currentStream?.type,
+      hasDRM:      !!currentStream?.drm,
+      drmType:     currentStream?.drm?.type,
+      exoCode:     code,
+      exoMsg:      msg,
+      exoDomain:   domain,
+    });
+
+    scheduleRetryRef.current(skipNow);
+
+  } catch (e) { console.error('[VideoPlayer] handleError threw:', e); }
+}, [clearAllTimers, seekToLiveEdge, channel]); // ← stream removed from deps
 
   // ── Build source / DRM props ──────────────────────────────────────────────
 
-  const sourceHeaders: Record<string, string> = {
-    // Use the stream's User-Agent (set by StreamResolver from API data).
-    // VLC_USER_AGENT is used when the channel has no userAgent set — this
-    // matches TiViMate's default UA and is accepted by most IPTV servers.
-    'User-Agent': (stream?.userAgent && !stream.userAgent.startsWith('@'))
+  const sourceHeaders = useMemo<Record<string, string>>(() => {
+  if (!stream) return {};
+  return {
+    'User-Agent': (stream.userAgent && !stream.userAgent.startsWith('@'))
       ? stream.userAgent
       : 'VLC/3.0.18 LibVLC/3.0.18',
     'Accept':     ACCEPT_HEADER,
     'Connection': 'keep-alive',
     ...Object.fromEntries(
-      Object.entries(stream?.httpHeaders ?? {})
+      Object.entries(stream.httpHeaders ?? {})
         .filter(([k]) => k.toLowerCase() !== 'user-agent')
     ),
   };
+}, [stream]);
 
-  let drmProp: DRMProp = null;
-  if (stream?.drm) {
-    try { drmProp = toDRMTypeProp(stream.drm); } catch (e) {
-      console.warn('[VideoPlayer] Failed to build DRM prop:', e);
-    }
+const drmProp = useMemo<DRMProp>(() => {
+  if (!stream?.drm) return null;
+  try { return toDRMTypeProp(stream.drm); } catch (e) {
+    console.warn('[VideoPlayer] Failed to build DRM prop:', e);
+    return null;
   }
+}, [stream?.drm]);
 
   useEffect(() => {
     if (!stream) return;
@@ -501,8 +506,8 @@ const VideoPlayerInner: React.FC<Props> = ({ channel }) => {
     <View style={styles.container}>
 
       {stream && (
-        <View style={styles.videoWrapper} pointerEvents="none">
-          <Video
+<View style={[styles.videoWrapper, { pointerEvents: 'none' }]}>
+            <Video
             key={stream.url}
             ref={videoRef}
             source={{
@@ -518,13 +523,12 @@ const VideoPlayerInner: React.FC<Props> = ({ channel }) => {
             playInBackground={false}
             playWhenInactive={false}
             ignoreSilentSwitch="ignore"
-            minLoadRetryCount={2}      // ExoPlayer retries internally 2× before surfacing error to JS
+            minLoadRetryCount={1}      // ExoPlayer retries internally 2× before surfacing error to JS
             reportBandwidth={false}
             onLoadStart={handleLoadStart}
             onLoad={handleLoad}
             onError={handleError}
             onBuffer={handleBuffer}
-            onProgress={handleProgress}
             focusable={false}
             {...(drmProp ? { drm: drmProp } : {})}
             {...(Platform.isTV ? { isTVSelectable: false } : {})}

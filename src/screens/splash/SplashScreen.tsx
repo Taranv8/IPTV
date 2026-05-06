@@ -8,12 +8,12 @@ import {
   Platform,
   Dimensions,
 } from 'react-native';
-import { StackNavigationProp } from '@react-navigation/stack';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../types/navigation';
 import { checkForOTAUpdate } from '../../services/OTAUpdateService';
 
 
-type SplashScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Splash'>;
+type SplashScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Splash'>;
 interface Props { navigation: SplashScreenNavigationProp; }
 
 const { width: SW, height: SH } = Dimensions.get('window');
@@ -430,15 +430,15 @@ return () => { cancelled = true; };
       <View style={styles.bgGrad4} />
 
       {/* Static stars */}
-      {STARS.map((s, i) => (
-        <View key={`s${i}`} style={[styles.star, {
-          left: s.x, top: s.y,
-          width: s.r, height: s.r,
-          borderRadius: s.r / 2,
-          opacity: s.o,
-          backgroundColor: s.color,
-        }]} />
-      ))}
+{STARS.filter(s => !s.twinkle).map((s, i) => (
+  <View key={`s${i}`} style={[styles.star, {
+    left: s.x, top: s.y,
+    width: s.r, height: s.r,
+    borderRadius: s.r / 2,
+    opacity: s.o,
+    backgroundColor: s.color,
+  }]} />
+))}
 
       {/* Twinkle stars */}
       {twinkleStars.map((s, i) => (

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback } from 'react';
 import {
   View,
   Text,
@@ -6,17 +6,17 @@ import {
   TouchableOpacity,
   ScrollView,
   Switch,
-  TextInput,
   Alert,
 } from 'react-native';
-import { StackNavigationProp } from '@react-navigation/stack';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../types/navigation';
 import { useSettings } from '../../context/SettingsContext';
 import { useChannelContext } from '../../context/ChannelContext';
 import { APP_CONFIG } from '../../constants/config';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { CacheService } from '../../services/storage/CacheService';
 
-type SettingsScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Settings'>;
+type SettingsScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Settings'>;
 
 interface Props {
   navigation: SettingsScreenNavigationProp;
@@ -28,23 +28,29 @@ const { refreshChannels } = useChannelContext();
 
  
 
-  const handleClearData = () => {
-    Alert.alert(
-      'Clear All Data',
-      'Are you sure you want to clear all settings and channel data?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Clear',
-          style: 'destructive',
-          onPress: () => {
-            // Clear logic will be implemented in context
-            Alert.alert('Success', 'All data cleared');
-          },
-        },
-      ]
-    );
-  };
+const handleConfirmClear = useCallback(async () => {
+  try {
+    await CacheService.clearCache();
+    refreshChannels();
+    Alert.alert('Success', 'Cache cleared — channels will reload');
+  } catch (e) {
+    Alert.alert('Error', 'Failed to clear data');
+  }
+}, [refreshChannels]);
+
+const handleClearData = useCallback(() => {
+  Alert.alert(
+    'Clear All Data',
+    'Are you sure you want to clear all settings and channel data?',
+    [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Clear', style: 'destructive', onPress: handleConfirmClear },
+    ]
+  );
+}, [handleConfirmClear]);
+
+const handleGoBack = useCallback(() => navigation.goBack(), [navigation]);
+const handleNavigateSelection = useCallback(() => navigation.navigate('Selection'), [navigation]);
 
   return (
     <View style={styles.container}>
@@ -52,7 +58,7 @@ const { refreshChannels } = useChannelContext();
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backButton}
-          onPress={() => navigation.goBack()}
+onPress={handleGoBack}
         >
           <Icon name="arrow-left" size={24} color="#fff" />
         </TouchableOpacity>

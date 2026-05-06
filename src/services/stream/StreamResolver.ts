@@ -18,7 +18,6 @@
 
 import axios from 'axios';
 import { StreamUrl } from '../../types/channel';
-import { Buffer } from 'buffer';
 
 // ─── The one User-Agent ranapk.online accepts ────────────────────────────────
 export const VLC_USER_AGENT = 'VLC/3.0.18 LibVLC/3.0.18';
@@ -30,8 +29,6 @@ export const DEFAULT_STREAM_HEADERS = {
   'Connection':      'keep-alive',
 };
 
-// ─── Source cycling ───────────────────────────────────────────────────────────
-export const MAX_RETRIES_PER_SOURCE = 3;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -78,17 +75,7 @@ export interface ResolvedStream {
 
 // ─── ClearKey key parser ──────────────────────────────────────────────────────
 
-function hexToBase64Url(hex: string): string {
-  const bytes: number[] = [];
-  for (let i = 0; i + 1 < hex.length; i += 2) {
-    bytes.push(parseInt(hex.slice(i, i + 2), 16));
-  }
-  return Buffer.from(bytes)
-    .toString('base64')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=/g, '');
-}
+
 
 /**
  * Parses a ClearKey licenseKey string into a DRMConfig.
@@ -292,7 +279,7 @@ export class StreamResolver {
         case 'widevine':
         case 'playready':
           if (lk) {
-            drm = { type: streamEntry.licenseType, licenseServer: lk, headers: httpHeaders };
+drm = { type: streamEntry.licenseType, licenseServer: lk };
             console.log(`[StreamResolver] ${streamEntry.licenseType.toUpperCase()} DRM: licenseServer=${lk}`);
           } else {
             console.warn('[StreamResolver] DRM stream missing licenseKey (license server URL):', url);
@@ -385,10 +372,10 @@ export class StreamResolver {
       validateStatus: s => s < 500,
     });
 
-    const finalUrl: string =
-      (res.request as any)?.responseURL ||
-      (res.config  as any)?.url         ||
-      res.headers?.location             || '';
+   const finalUrl: string =
+  (res.request as any)?.responseURL ||
+  res.headers?.['x-final-url']      ||
+  res.headers?.location             || '';
 
     const resolvedUrl = (finalUrl && finalUrl !== url) ? finalUrl : url;
     const ctType      = typeFromContentType(res.headers?.['content-type']);
@@ -419,8 +406,8 @@ export class StreamResolver {
 
     const body: string = typeof res.data === 'string' ? res.data.trim() : '';
     const finalUrl: string =
-      (res.request as any)?.responseURL ||
-      (res.config  as any)?.url         || '';
+  (res.request as any)?.responseURL ||
+  res.headers?.['x-final-url']      || '';
 
     console.log('[StreamResolver] GET', res.status, finalUrl || url);
     console.log('[StreamResolver] GET body[:200]:', body.substring(0, 200));

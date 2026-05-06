@@ -1,4 +1,3 @@
-// src/screens/ota/OTAUpdateScreen.tsx
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
@@ -10,11 +9,11 @@ import {
   Dimensions,
   Platform,
 } from 'react-native';
-import { StackNavigationProp } from '@react-navigation/stack';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../types/navigation';
 import { consumePendingOTA, OTAProgressEvent, OTAUpdateReady } from '../../services/OTAUpdateService';
 
-const { width: SW } = Dimensions.get('window');
+const { width: SW } = Dimensions.get('screen');
 
 function formatBytes(bytes: number): string {
   if (bytes <= 0) return '—';
@@ -27,6 +26,12 @@ const FF = Platform.OS === 'android'
   : { bold: 'AvenirNext-DemiBold', regular: 'AvenirNext-Regular', mono: 'Courier New' };
 
 type ScreenState = 'idle' | 'downloading' | 'done' | 'error';
+
+type Props = {
+  navigation: NativeStackNavigationProp<RootStackParamList, 'OTAUpdate'>;
+};
+
+// ─── Glow Ring ────────────────────────────────────────────────────────────────
 
 const GlowRing: React.FC<{
   scale: Animated.Value;
@@ -45,25 +50,24 @@ const GlowRing: React.FC<{
   }} />
 );
 
-type Props = {
-  navigation: StackNavigationProp<RootStackParamList, 'OTAUpdate'>;
-};
+// ─── Screen ───────────────────────────────────────────────────────────────────
 
 const OTAUpdateScreen: React.FC<Props> = ({ navigation }) => {
 
-  // ── Consume result ONCE at mount — store it in a ref so it survives re-renders
-  const otaRef = useRef<OTAUpdateReady | null>(null);
-  if (otaRef.current === null) {
+  // Consume ONCE — sentinel prevents double-invoke in Strict Mode
+  const otaRef = useRef<OTAUpdateReady | null | 'uninitialised'>('uninitialised');
+  if (otaRef.current === 'uninitialised') {
     const r = consumePendingOTA();
     otaRef.current = r?.updateAvailable ? r : null;
   }
 
-  // ── ALL hooks must be here unconditionally ────────────────────────────────
   const [screenState, setScreenState] = useState<ScreenState>('idle');
-  const [progress, setProgress]       = useState(0);
-  const [downloaded, setDownloaded]   = useState(0);
-  const [totalSize, setTotalSize]     = useState(otaRef.current?.bundleSize ?? 0);
-  const [errorMsg, setErrorMsg]       = useState('');
+  const [progress,    setProgress]    = useState(0);
+  const [downloaded,  setDownloaded]  = useState(0);
+const [totalSize, setTotalSize] = useState(
+  (otaRef.current as OTAUpdateReady | null)?.bundleSize ?? 0
+);
+  const [errorMsg, setErrorMsg] = useState('');
 
   const progressAnim = useRef(new Animated.Value(0)).current;
   const fadeIn       = useRef(new Animated.Value(0)).current;
@@ -74,12 +78,15 @@ const OTAUpdateScreen: React.FC<Props> = ({ navigation }) => {
   const r2S          = useRef(new Animated.Value(0.3)).current;
   const r2O          = useRef(new Animated.Value(0.8)).current;
 
-  // Redirect if no pending OTA (guards against direct navigation)
+  // ── Entrance + ring animations ────────────────────────────────────────────
   useEffect(() => {
-    if (!otaRef.current) {
+    if (!otaRef.current || otaRef.current === 'uninitialised') {
       navigation.reset({ index: 0, routes: [{ name: 'Selection' }] });
       return;
     }
+
+    let cancelled = false;
+    const ringTimers: ReturnType<typeof setTimeout>[] = [];
 
     // Fade in
     Animated.timing(fadeIn, {
@@ -87,27 +94,35 @@ const OTAUpdateScreen: React.FC<Props> = ({ navigation }) => {
     }).start();
 
     // Icon pulse
-    Animated.loop(Animated.sequence([
+    const pulseAnim = Animated.loop(Animated.sequence([
       Animated.timing(iconPulse, { toValue: 1.12, duration: 900, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
       Animated.timing(iconPulse, { toValue: 1.0,  duration: 900, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
-    ])).start();
+    ]));
+    pulseAnim.start();
 
-    // Broadcast rings
+    // Broadcast rings — guarded recursive timers
     const ring = (sV: Animated.Value, oV: Animated.Value, delay: number) => {
       const run = () => {
+        if (cancelled) return;
         sV.setValue(0.3); oV.setValue(0.7);
         Animated.parallel([
           Animated.timing(sV, { toValue: 3.2, duration: 2000, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
           Animated.timing(oV, { toValue: 0,   duration: 2000, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
-        ]).start(() => setTimeout(run, delay));
+        ]).start(() => { if (!cancelled) ringTimers.push(setTimeout(run, delay)); });
       };
-      setTimeout(run, delay);
+      ringTimers.push(setTimeout(run, delay));
     };
     ring(r1S, r1O, 0);
     ring(r2S, r2O, 800);
+
+    return () => {
+      cancelled = true;
+      pulseAnim.stop();
+      ringTimers.forEach(clearTimeout);
+    };
   }, []);
 
-  // Progress bar animation
+  // ── Progress bar animation ────────────────────────────────────────────────
   useEffect(() => {
     Animated.timing(progressAnim, {
       toValue: progress / 100,
@@ -115,16 +130,22 @@ const OTAUpdateScreen: React.FC<Props> = ({ navigation }) => {
       easing: Easing.out(Easing.quad),
       useNativeDriver: false,
     }).start();
-  }, [progress]);
+  }, [progress, progressAnim]);
 
+  // ── Handlers ──────────────────────────────────────────────────────────────
   const playDoneAnimation = useCallback(() => {
     Animated.spring(doneScale, {
       toValue: 1, tension: 80, friction: 5, useNativeDriver: true,
     }).start();
-  }, []);
+  }, [doneScale]);
+
+  const handleSkip = useCallback(() => {
+    navigation.reset({ index: 0, routes: [{ name: 'Selection' }] });
+  }, [navigation]);
 
   const startUpdate = useCallback(async () => {
-    if (!otaRef.current) return;
+    const ota = otaRef.current;
+    if (!ota || ota === 'uninitialised') return;
 
     setScreenState('downloading');
     setProgress(0);
@@ -132,7 +153,7 @@ const OTAUpdateScreen: React.FC<Props> = ({ navigation }) => {
     setErrorMsg('');
 
     try {
-      await otaRef.current.applyUpdate((event: OTAProgressEvent) => {
+      await ota.applyUpdate((event: OTAProgressEvent) => {
         setProgress(event.percent);
         setDownloaded(event.bytesWritten);
         if (event.contentLength > 0) setTotalSize(event.contentLength);
@@ -155,11 +176,13 @@ const OTAUpdateScreen: React.FC<Props> = ({ navigation }) => {
     inputRange: [0, 1], outputRange: ['0%', '97%'],
   });
 
-  // ── Guard render — hooks are already called above so this is safe ─────────
-  if (!otaRef.current) return null;
 
-  const { version } = otaRef.current;
+const ota = otaRef.current as OTAUpdateReady | null;
+if (!ota) return null;
 
+  const { version } = ota;
+
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <View style={styles.root}>
       <View style={styles.bgBase} />
@@ -182,6 +205,7 @@ const OTAUpdateScreen: React.FC<Props> = ({ navigation }) => {
           </Animated.View>
         </View>
 
+        {/* ── Idle ── */}
         {screenState === 'idle' && (
           <View style={styles.section}>
             <Text style={styles.title}>Update Available</Text>
@@ -203,6 +227,7 @@ const OTAUpdateScreen: React.FC<Props> = ({ navigation }) => {
           </View>
         )}
 
+        {/* ── Downloading ── */}
         {screenState === 'downloading' && (
           <View style={styles.section}>
             <Text style={styles.title}>Downloading…</Text>
@@ -222,6 +247,7 @@ const OTAUpdateScreen: React.FC<Props> = ({ navigation }) => {
           </View>
         )}
 
+        {/* ── Done ── */}
         {screenState === 'done' && (
           <View style={styles.section}>
             <Text style={styles.title}>Update Applied!</Text>
@@ -234,6 +260,7 @@ const OTAUpdateScreen: React.FC<Props> = ({ navigation }) => {
           </View>
         )}
 
+        {/* ── Error ── */}
         {screenState === 'error' && (
           <View style={styles.section}>
             <Text style={styles.title}>Update Failed</Text>
@@ -241,11 +268,7 @@ const OTAUpdateScreen: React.FC<Props> = ({ navigation }) => {
             <TouchableOpacity style={styles.primaryBtn} onPress={startUpdate} activeOpacity={0.8}>
               <Text style={styles.primaryBtnText}>Retry</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.skipBtn}
-              onPress={() => navigation.reset({ index: 0, routes: [{ name: 'Selection' }] })}
-              activeOpacity={0.7}
-            >
+            <TouchableOpacity style={styles.skipBtn} onPress={handleSkip} activeOpacity={0.7}>
               <Text style={styles.skipText}>Skip for now</Text>
             </TouchableOpacity>
           </View>
@@ -255,6 +278,7 @@ const OTAUpdateScreen: React.FC<Props> = ({ navigation }) => {
     </View>
   );
 };
+
 
 // Styles are identical to before — no changes needed
 const styles = StyleSheet.create({

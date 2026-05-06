@@ -1,87 +1,163 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
+import React, { useCallback } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Image,
+  FlatList,
+  ListRenderItemInfo,
+} from 'react-native';
 import { useChannelContext } from '../../context/ChannelContext';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { Channel } from '../../types/channel';
 
 interface Props {
   onChannelSelect: (channelNumber: number) => void;
 }
 
+const CARD_HEIGHT = 180;
+const NUM_COLUMNS = 5;
+
+// ─── Memoized Card ───────────────────────────────────────────────────────────
+
+const ChannelCard = React.memo(({
+  channel,
+  onPress,
+}: {
+  channel: Channel;
+  onPress: (num: number) => void;
+}) => {
+  const handlePress = useCallback(
+    () => onPress(channel.number ?? 0),
+    [channel.number, onPress]
+  );
+
+  return (
+   <TouchableOpacity
+  style={styles.card}
+  onPress={handlePress}
+  activeOpacity={0.8}
+  accessible={true}
+  accessibilityLabel={`Channel ${channel.number} ${channel.name}`}
+  hasTVPreferredFocus={false}
+  {...({
+    tvParallaxProperties: { enabled: false },
+  } as any)}
+>
+      {/* Image */}
+      <View style={styles.imageContainer}>
+        {channel.logo ? (
+          <Image
+            source={{ uri: channel.logo }}
+            style={styles.image}
+            onError={(e) => console.warn('Image load failed:', e.nativeEvent.error)}
+          />
+        ) : (
+          <View style={styles.imagePlaceholder}>
+            <Icon name="television" size={40} color="#6b7280" />
+          </View>
+        )}
+        <View style={styles.imageOverlay} />
+
+        {channel.isFavorite && (
+          <View style={styles.favoriteBadge}>
+            <Icon name="star" size={12} color="#fff" />
+          </View>
+        )}
+        {channel.isHD && (
+          <View style={styles.hdBadge}>
+            <Text style={styles.hdText}>HD</Text>
+          </View>
+        )}
+      </View>
+
+      {/* Info */}
+      <View style={styles.info}>
+        <Text style={styles.channelNumber}>CH {channel.number}</Text>
+        <Text style={styles.channelName} numberOfLines={1}>
+          {channel.name}
+        </Text>
+        <View style={styles.tags}>
+          <View style={styles.tag}>
+            <Text style={styles.tagText}>{channel.group}</Text>
+          </View>
+          <View style={styles.tag}>
+            <Text style={styles.tagText}>{channel.language}</Text>
+          </View>
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+});
+
+// ─── Empty State ─────────────────────────────────────────────────────────────
+
+const EmptyState = React.memo(() => (
+  <View style={styles.emptyContainer}>
+    <Icon name="magnify" size={80} color="#374151" />
+    <Text style={styles.emptyTitle}>No channels found</Text>
+    <Text style={styles.emptySubtext}>Try adjusting your filters</Text>
+  </View>
+));
+
+// ─── Grid ────────────────────────────────────────────────────────────────────
+
 const ChannelGrid: React.FC<Props> = ({ onChannelSelect }) => {
   const { filteredChannels } = useChannelContext();
 
-  if (filteredChannels.length === 0) {
-    return (
-      <View style={styles.emptyContainer}>
-        <Icon name="magnify" size={80} color="#374151" />
-        <Text style={styles.emptyTitle}>No channels found</Text>
-        <Text style={styles.emptySubtext}>Try adjusting your filters</Text>
-      </View>
-    );
-  }
+  const renderItem = useCallback(
+    ({ item }: ListRenderItemInfo<Channel>) => (
+      <ChannelCard channel={item} onPress={onChannelSelect} />
+    ),
+    [onChannelSelect]
+  );
+
+  const getItemLayout = useCallback(
+    (_: ArrayLike<Channel> | null | undefined, index: number) => ({
+      length: CARD_HEIGHT,
+      offset: CARD_HEIGHT * Math.floor(index / NUM_COLUMNS),
+      index,
+    }),
+    []
+  );
+
+  const keyExtractor = useCallback((item: Channel) => item.id, []);
 
   return (
-    <View style={styles.grid}>
-      {filteredChannels.map((channel) => (
-        <TouchableOpacity
-          key={channel.id}
-          style={styles.card}
-onPress={() => onChannelSelect(channel.number ?? 0)}
-          activeOpacity={0.8}
-        >
-          {/* Channel Image */}
-          <View style={styles.imageContainer}>
-            {channel.logo ? (
-              <Image source={{ uri: channel.logo }} style={styles.image} />
-            ) : (
-              <View style={styles.imagePlaceholder}>
-                <Icon name="television" size={40} color="#6b7280" />
-              </View>
-            )}
-            <View style={styles.imageOverlay} />
-            
-            {/* Badges */}
-            {channel.isFavorite && (
-              <View style={styles.favoriteBadge}>
-                <Icon name="star" size={12} color="#fff" />
-              </View>
-            )}
-            {channel.isHD && (
-              <View style={styles.hdBadge}>
-                <Text style={styles.hdText}>HD</Text>
-              </View>
-            )}
-          </View>
-
-          {/* Channel Info */}
-          <View style={styles.info}>
-            <Text style={styles.channelNumber}>CH {channel.number}</Text>
-            <Text style={styles.channelName} numberOfLines={1}>
-              {channel.name}
-            </Text>
-            <View style={styles.tags}>
-              <View style={styles.tag}>
-<Text style={styles.tagText}>{channel.group}</Text>
-              </View>
-              <View style={styles.tag}>
-                <Text style={styles.tagText}>{channel.language}</Text>
-              </View>
-            </View>
-          </View>
-        </TouchableOpacity>
-      ))}
-    </View>
+    <FlatList
+      data={filteredChannels}
+      keyExtractor={keyExtractor}
+      numColumns={NUM_COLUMNS}
+      renderItem={renderItem}
+      getItemLayout={getItemLayout}
+      ListEmptyComponent={EmptyState}
+      contentContainerStyle={styles.grid}
+      columnWrapperStyle={styles.row}
+      removeClippedSubviews={true}
+      maxToRenderPerBatch={10}
+      updateCellsBatchingPeriod={50}
+      windowSize={5}
+      initialNumToRender={10}
+    />
   );
 };
 
+// ─── Styles ──────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
   grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 16,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    flexGrow: 1,
+  },
+  row: {
+    justifyContent: 'flex-start',
+    marginBottom: 16,
   },
   card: {
     width: '18%',
+    marginHorizontal: '1%',
     backgroundColor: '#1f2937',
     borderRadius: 12,
     overflow: 'hidden',
@@ -146,8 +222,8 @@ const styles = StyleSheet.create({
   },
   tags: {
     flexDirection: 'row',
-    gap: 6,
     flexWrap: 'wrap',
+    marginHorizontal: -3,
   },
   tag: {
     backgroundColor: 'rgba(75, 85, 99, 0.5)',
@@ -156,6 +232,7 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     borderWidth: 1,
     borderColor: '#4b5563',
+    margin: 3,
   },
   tagText: {
     color: '#d1d5db',

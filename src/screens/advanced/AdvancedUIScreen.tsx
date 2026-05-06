@@ -1,13 +1,12 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  Image,
 } from 'react-native';
-import { StackNavigationProp } from '@react-navigation/stack';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../types/navigation';
 import { useChannelContext } from '../../context/ChannelContext';
 import { APP_CONFIG } from '../../constants/config';
@@ -15,18 +14,19 @@ import ChannelGrid from '../../components/channel/ChannelGrid';
 import ChannelFilters from '../../components/channel/ChannelFilters';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
-type AdvancedUIScreenNavigationProp = StackNavigationProp<RootStackParamList, 'AdvancedUI'>;
+type AdvancedUIScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'AdvancedUI'>;
 
 interface Props {
   navigation: AdvancedUIScreenNavigationProp;
 }
 
 const AdvancedUIScreen: React.FC<Props> = ({ navigation }) => {
-  const { filteredChannels, setCurrentChannel } = useChannelContext();
+  const { filteredChannels } = useChannelContext();
+const channelCount = filteredChannels.length;
 
-  const handleChannelSelect = (channelNumber: number) => {
-    navigation.navigate('SimpleUI', { channel: channelNumber });
-  };
+  const handleChannelSelect = useCallback((channelNumber: number) => {
+  navigation.navigate('SimpleUI', { channel: channelNumber });
+}, [navigation]);
 
   return (
     <View style={styles.container}>
@@ -46,7 +46,7 @@ const AdvancedUIScreen: React.FC<Props> = ({ navigation }) => {
           <View style={styles.headerRight}>
             <View style={styles.totalChannels}>
               <Text style={styles.totalChannelsLabel}>Total Channels</Text>
-              <Text style={styles.totalChannelsValue}>{filteredChannels.length}</Text>
+<Text style={styles.totalChannelsValue}>{channelCount}</Text>
             </View>
             <TouchableOpacity
               style={styles.settingsButton}
