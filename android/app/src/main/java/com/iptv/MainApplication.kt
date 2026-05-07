@@ -18,6 +18,7 @@ class MainApplication : Application(), ReactApplication {
 
       override fun getPackages() =
         PackageList(this).packages.apply {
+          add(OrientationPackage())
           // add(MyReactNativePackage())
         }
 

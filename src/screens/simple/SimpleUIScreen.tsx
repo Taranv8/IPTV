@@ -1,5 +1,5 @@
 // src/screens/simple/SimpleUIScreen.tsx
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   Pressable,
   Platform,
   StatusBar,
+  Modal,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../types/navigation';
@@ -17,6 +18,8 @@ import VideoPlayer from '../../components/player/VideoPlayer';
 import ChannelList from '../../components/channel/ChannelList';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useOrientation } from '../../hooks/useOrientation';
+import { Channel } from '../../types/channel';
+import { lockToLandscape, lockToPortrait } from '../../utils/OrientationHelper';
 
 // ─── Safe TV event hook ───────────────────────────────────────────────────────
 type TVEventHandlerHook = (cb: (evt: { eventType: string }) => void) => void;
@@ -34,7 +37,6 @@ const _noopHook: TVEventHandlerHook = (_cb) => {
 };
 
 const useSafeTVEvents = _useTVEventHandler ?? _noopHook;
-
 // ─────────────────────────────────────────────────────────────────────────────
 
 type SimpleUIScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'SimpleUI'>;
@@ -45,55 +47,151 @@ interface Props {
 
 // ─── Layout constants ─────────────────────────────────────────────────────────
 const isTV = Platform.isTV;
-
-// Portrait phone: video takes top 30% of screen
 const VIDEO_PORTRAIT_HEIGHT_RATIO = 0.30;
-
+const ACTIVE_MENU_DELAY = 12_000;
+const PASSIVE_MENU_DELAY = APP_CONFIG.CONTROLS_HIDE_DELAY;
 // ─────────────────────────────────────────────────────────────────────────────
- const ACTIVE_MENU_DELAY  = 12_000;
-  const PASSIVE_MENU_DELAY = APP_CONFIG.CONTROLS_HIDE_DELAY;
 
 const SimpleUIScreen: React.FC<Props> = ({ navigation }) => {
   const { currentChannel, setCurrentChannel, filteredChannels, channels } =
     useChannelContext();
   const [showControls, setShowControls] = useState(true);
   const [channelPage, setChannelPage] = useState(0);
+
+  // NOTE: useOrientation will still flip when lockToLandscape() fires on the phone,
+  // but the fullscreen Modal covers the entire screen so the layout switch underneath
+  // is completely invisible to the user.
   const { isLandscape, width, height } = useOrientation();
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ─── Timer ────────────────────────────────────────────────────────────────
- 
-const resetTimer = useCallback((active = false) => {
-  setShowControls(true);
-  if (hideTimer.current) clearTimeout(hideTimer.current);
-  hideTimer.current = setTimeout(
-    () => setShowControls(false),
-    active ? ACTIVE_MENU_DELAY : PASSIVE_MENU_DELAY,
-  );
-}, []); // setShowControls is stable from useState — safe to omit
+  const STATUS_BAR_HEIGHT = Platform.select({
+    android: StatusBar.currentHeight ?? 0,
+    ios: 20,
+    default: 0,
+  }) || 0;
+
+  // ─── Fullscreen modal (phone portrait → landscape video) ──────────────────
+  // We use a Modal instead of relying on the layout branch so that when
+  // lockToLandscape() causes isLandscape→true (which would flip isPortraitPhone
+  // to false and render the TV overlay), the Modal sits on top and hides it.
+  const [isFullscreenModalVisible, setIsFullscreenModalVisible] = useState(false);
+
+  const handleEnterFullscreen = useCallback(() => {
+    lockToLandscape();                    // 1. Rotate the Android activity
+    setIsFullscreenModalVisible(true);    // 2. Cover the screen before layout flips
+  }, []);
+
+  const handleExitFullscreen = useCallback(() => {
+    setIsFullscreenModalVisible(false);   // 1. Dismiss modal first
+    lockToPortrait();                     // 2. Rotate back to portrait
+    resetPortraitControls();              // 3. Re-show portrait top bar
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // (resetPortraitControls is defined below; the eslint disable avoids a
+  //  circular dependency warning — the ref approach below is cleaner)
+
+  // ─── Stream source modal ──────────────────────────────────────────────────
+  const [streamModalVisible, setStreamModalVisible] = useState(false);
+
+  // ─── Portrait controls auto‑hide ─────────────────────────────────────────
+  const [showPortraitControls, setShowPortraitControls] = useState(true);
+  const portraitHideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const resetPortraitControls = useCallback(() => {
+    setShowPortraitControls(true);
+    if (portraitHideTimer.current) clearTimeout(portraitHideTimer.current);
+    portraitHideTimer.current = setTimeout(() => {
+      setShowPortraitControls(false);
+    }, 3000);
+  }, []);
+
+  // Wire resetPortraitControls into handleExitFullscreen via a ref so it is
+  // always fresh without causing circular deps in useCallback.
+  const resetPortraitControlsRef = useRef(resetPortraitControls);
+  useEffect(() => { resetPortraitControlsRef.current = resetPortraitControls; }, [resetPortraitControls]);
+
+  const handleExitFullscreenStable = useCallback(() => {
+    setIsFullscreenModalVisible(false);
+    lockToPortrait();
+    resetPortraitControlsRef.current();
+  }, []);
+
+  useEffect(() => {
+    resetPortraitControls();
+    return () => {
+      if (portraitHideTimer.current) clearTimeout(portraitHideTimer.current);
+    };
+  }, [resetPortraitControls]);
+
+  // ─── Video keys ───────────────────────────────────────────────────────────
+  // Two separate keys: one for the portrait strip player, one for the fullscreen
+  // modal player. This prevents the portrait player from remounting (and losing
+  // its buffer / position) when fullscreen opens/closes.
+  const baseVideoKey = useMemo(() => {
+    if (!currentChannel) return 'no-channel';
+    return `${currentChannel.id}-${currentChannel.streamUrl}`;
+  }, [currentChannel?.id, currentChannel?.streamUrl]);
+
+  const portraitVideoKey = `portrait-${baseVideoKey}`;
+  const fullscreenVideoKey = `fullscreen-${baseVideoKey}`;
+
+  // ─── Landscape / TV timer ─────────────────────────────────────────────────
+  const resetTimer = useCallback((active = false) => {
+    setShowControls(true);
+    if (hideTimer.current) clearTimeout(hideTimer.current);
+    hideTimer.current = setTimeout(
+      () => setShowControls(false),
+      active ? ACTIVE_MENU_DELAY : PASSIVE_MENU_DELAY,
+    );
+  }, []);
 
   useEffect(() => {
     resetTimer();
     return () => { if (hideTimer.current) clearTimeout(hideTimer.current); };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [resetTimer]);
 
- const handleTVEvent = useCallback(() => resetTimer(), [resetTimer]);
-useSafeTVEvents(handleTVEvent);
+  const handleTVEvent = useCallback(() => resetTimer(), [resetTimer]);
+  useSafeTVEvents(handleTVEvent);
 
-const handleChannelChange = useCallback((channelNumber: number) => {
-  const channel = channels.find(ch => ch.number === channelNumber);
-  if (channel) {
-    setCurrentChannel(channel);
-    resetTimer();
-  }
-}, [channels, setCurrentChannel, resetTimer]);
+  const handleChannelChange = useCallback((channelNumber: number) => {
+    const channel = channels.find(ch => ch.number === channelNumber);
+    if (channel) {
+      setCurrentChannel(channel);
+      resetTimer();
+    }
+  }, [channels, setCurrentChannel, resetTimer]);
+
+  // ─── Stream source switching ──────────────────────────────────────────────
+  const handleStreamSelect = useCallback((index: number) => {
+    if (!currentChannel) return;
+    const urls = [...currentChannel.streamUrls];
+    if (index >= urls.length) return;
+    const [selectedEntry] = urls.splice(index, 1);
+    urls.unshift(selectedEntry);
+
+    const updatedChannel: Channel = {
+      ...currentChannel,
+      streamUrl: selectedEntry.url,
+      streamUrls: urls,
+      licenseType: selectedEntry.licenseType || null,
+      licenseKey: selectedEntry.licenseKey || null,
+      userAgent: selectedEntry.userAgent || null,
+      httpHeaders: selectedEntry.httpHeaders || null,
+    };
+    setCurrentChannel(updatedChannel);
+    setStreamModalVisible(false);
+    resetPortraitControls();
+  }, [currentChannel, setCurrentChannel, resetPortraitControls]);
 
   // ─── Dimensions ───────────────────────────────────────────────────────────
   const screenHeight = height;
   const videoPortraitH = Math.round(screenHeight * VIDEO_PORTRAIT_HEIGHT_RATIO);
   const topBarHeight = isTV ? 68 : 56;
 
+  // This flag controls which branch renders. When lockToLandscape() fires on the
+  // phone, isLandscape becomes true and isPortraitPhone flips to false — but by
+  // that time the fullscreen Modal is already covering the screen, so the user
+  // never sees the TV/landscape layout accidentally render.
   const isPortraitPhone = !isTV && !isLandscape;
 
   return (
@@ -105,35 +203,59 @@ const handleChannelChange = useCallback((channelNumber: number) => {
       />
 
       {/* ═══════════════════════════════════════════════════════════════════
-          PORTRAIT PHONE — stacked layout
-          Video strip on top, TiviMate-style channel list below
+          PORTRAIT PHONE
       ═══════════════════════════════════════════════════════════════════ */}
       {isPortraitPhone ? (
-        <Pressable style={styles.root} onPress={() => resetTimer()}>
+        <View style={styles.root}>
           {/* Video strip */}
-          <View style={[styles.videoStrip, { height: videoPortraitH }]}>
+          <Pressable
+            style={[styles.videoStrip, { height: videoPortraitH }]}
+            onPress={resetPortraitControls}
+          >
             {currentChannel ? (
-              <VideoPlayer channel={currentChannel} />
+              <View style={{ marginTop: STATUS_BAR_HEIGHT, flex: 1 }}>
+                <VideoPlayer
+                  key={portraitVideoKey}
+                  channel={currentChannel}
+                  fullscreen={false}
+                  onFullscreenDismiss={() => {}}
+                />
+              </View>
             ) : (
-              <NoChannelPlaceholder isTV={false} />
+              <View style={{ marginTop: STATUS_BAR_HEIGHT, flex: 1 }}>
+                <NoChannelPlaceholder isTV={false} />
+              </View>
             )}
 
-            {/* Top bar floats over the video */}
-            <View style={[styles.portraitTopBar, { height: topBarHeight }]}>
-              <AppLogo />
-              {currentChannel && (
-                <View style={styles.portraitChannelBadge}>
-                  <Text style={styles.portraitChNum}>CH {currentChannel.number}</Text>
-                  <Text style={styles.portraitChName} numberOfLines={1}>
-                    {currentChannel.name}
-                  </Text>
+            {/* Top bar — auto‑hides after 3 s */}
+            {showPortraitControls && (
+              <View style={[styles.portraitTopBar, { height: topBarHeight, top: STATUS_BAR_HEIGHT }]}>
+                <AppLogo />
+                {currentChannel && (
+                  <View style={styles.portraitChannelBadge}>
+                    <Text style={styles.portraitChName} numberOfLines={1}>
+                      {currentChannel.name}
+                    </Text>
+                  </View>
+                )}
+                <View style={styles.topBarRightIcons}>
+                  {/* Fullscreen button — opens the landscape modal */}
+                  <TouchableOpacity
+                    onPress={handleEnterFullscreen}
+                    style={styles.iconButton}
+                    accessibilityLabel="Enter full screen"
+                  >
+                    <Icon name="fullscreen" size={20} color="#94a3b8" />
+                  </TouchableOpacity>
+                  <SettingsButton
+                    onPress={() => { resetPortraitControls(); setStreamModalVisible(true); }}
+                  />
                 </View>
-              )}
-              <SettingsButton onPress={() => { resetTimer(); navigation.navigate('Selection'); }} />
-            </View>
-          </View>
+              </View>
+            )}
+          </Pressable>
 
-          {/* Channel list — portrait mode with Language/Genre chips + compact rows */}
+          {/* Channel list */}
           <View style={styles.portraitListContainer}>
             <ChannelList
               channels={filteredChannels}
@@ -146,33 +268,33 @@ const handleChannelChange = useCallback((channelNumber: number) => {
               isLandscape={false}
             />
           </View>
-        </Pressable>
+        </View>
       ) : (
         /* ═══════════════════════════════════════════════════════════════════
-            LANDSCAPE PHONE / TABLET / TV — full-screen video + overlay
+            LANDSCAPE / TABLET / TV — completely unchanged
         ═══════════════════════════════════════════════════════════════════ */
         <Pressable style={styles.root} onPress={() => resetTimer()}>
-          {/* Full-screen video background */}
           <View style={StyleSheet.absoluteFill}>
             {currentChannel ? (
-              <VideoPlayer channel={currentChannel} />
+              <VideoPlayer
+                key={baseVideoKey}
+                channel={currentChannel}
+                fullscreen={false}
+                onFullscreenDismiss={() => {}}
+              />
             ) : (
               <NoChannelPlaceholder isTV={isTV} />
             )}
           </View>
 
-        <Pressable
-  style={[StyleSheet.absoluteFill, styles.tapCatcher, { zIndex: showControls ? 1 : 10 }]}
-  onPress={() => resetTimer()}
-/>
+          <Pressable
+            style={[StyleSheet.absoluteFill, styles.tapCatcher, { zIndex: showControls ? 1 : 10 }]}
+            onPress={() => resetTimer()}
+          />
 
-          {/* Controls overlay */}
           {showControls && (
             <View style={styles.controlsOverlay}>
-              {/* Scrim */}
-<View style={[styles.scrim, { pointerEvents: 'none' }]} />
-
-              {/* Top bar */}
+              <View style={[styles.scrim, { pointerEvents: 'none' }]} />
               <View style={[styles.topBar, { height: topBarHeight }]}>
                 <View style={styles.topBarLeft}>
                   <AppLogo />
@@ -200,7 +322,6 @@ const handleChannelChange = useCallback((channelNumber: number) => {
                 </View>
               </View>
 
-              {/* TiviMate-style channel panel — full width, with left Language+Genre panel */}
               <View style={[styles.panel, { top: topBarHeight }]}>
                 <ChannelList
                   channels={filteredChannels}
@@ -217,31 +338,97 @@ const handleChannelChange = useCallback((channelNumber: number) => {
           )}
         </Pressable>
       )}
+
+      {/* ═══════════════════════════════════════════════════════════════════
+          FULLSCREEN LANDSCAPE MODAL  (phone only)
+          Opens on top of everything before the layout branch can flip.
+          The VideoPlayer here is a completely separate instance from the
+          portrait strip player (different key) so the strip player keeps
+          its state untouched while this modal is visible.
+      ═══════════════════════════════════════════════════════════════════ */}
+      <Modal
+        visible={isFullscreenModalVisible}
+        transparent={false}
+        animationType="fade"
+        supportedOrientations={['landscape', 'landscape-left', 'landscape-right']}
+        onRequestClose={handleExitFullscreenStable}
+        statusBarTranslucent
+      >
+        <View style={fullscreenStyles.container}>
+          <StatusBar hidden />
+
+          {currentChannel ? (
+            <VideoPlayer
+              key={fullscreenVideoKey}
+              channel={currentChannel}
+              fullscreen={false}         // Modal itself is the fullscreen container
+              onFullscreenDismiss={handleExitFullscreenStable}
+            />
+          ) : (
+            <NoChannelPlaceholder isTV={false} />
+          )}
+
+          {/* Exit button */}
+          <TouchableOpacity
+            style={fullscreenStyles.exitBtn}
+            onPress={handleExitFullscreenStable}
+            accessibilityLabel="Exit full screen"
+          >
+            <Icon name="fullscreen-exit" size={24} color="#fff" />
+          </TouchableOpacity>
+        </View>
+      </Modal>
+
+      {/* ── Stream source modal ─────────────────────────────────────────────── */}
+      <Modal
+        visible={streamModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setStreamModalVisible(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setStreamModalVisible(false)}
+        >
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Available Streams</Text>
+            {currentChannel?.streamUrls.length ? (
+              currentChannel.streamUrls.map((_entry, index) => (
+                <TouchableOpacity
+                  key={index}
+                  style={[
+                    styles.streamItem,
+                    currentChannel.streamUrl === currentChannel.streamUrls[index]?.url &&
+                      styles.streamItemActive,
+                  ]}
+                  onPress={() => handleStreamSelect(index)}
+                >
+                  <Text style={styles.streamItemText}>Stream {index + 1}</Text>
+                </TouchableOpacity>
+              ))
+            ) : (
+              <Text style={styles.noStreamsText}>No alternate sources available</Text>
+            )}
+            <TouchableOpacity
+              style={styles.closeButton}
+              onPress={() => setStreamModalVisible(false)}
+            >
+              <Text style={styles.closeButtonText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Modal>
     </View>
   );
 };
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
+// ─── Sub‑components ───────────────────────────────────────────────────────────
 
 const AppLogo: React.FC = () => (
   <View style={logoStyles.container}>
     <Icon name="television-play" size={isTV ? 26 : 18} color="#fff" />
   </View>
 );
-
-const logoStyles = StyleSheet.create({
-  container: {
-    backgroundColor: '#1d4ed8',
-    padding: isTV ? 10 : 7,
-    borderRadius: 10,
-    marginRight: 10,
-    shadowColor: '#3b82f6',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.6,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-});
 
 const SettingsButton: React.FC<{ onPress: () => void }> = ({ onPress }) => (
   <Pressable
@@ -255,16 +442,6 @@ const SettingsButton: React.FC<{ onPress: () => void }> = ({ onPress }) => (
   </Pressable>
 );
 
-const settingsStyles = StyleSheet.create({
-  btn: {
-    backgroundColor: 'rgba(30,41,59,0.8)',
-    padding: isTV ? 12 : 8,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#334155',
-  },
-});
-
 const NoChannelPlaceholder: React.FC<{ isTV: boolean }> = ({ isTV: tv }) => (
   <View style={placeholderStyles.container}>
     <Icon name="television-off" size={tv ? 120 : 60} color="#1e293b" />
@@ -275,27 +452,12 @@ const NoChannelPlaceholder: React.FC<{ isTV: boolean }> = ({ isTV: tv }) => (
   </View>
 );
 
-const placeholderStyles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#030712',
-    gap: 10,
-  },
-  text: { fontSize: 18, color: '#1f2937', fontWeight: '700' },
-  tvText: { fontSize: 28 },
-  sub: { fontSize: 13, color: '#111827' },
-});
-
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: '#030712',
   },
-
-  // ── Portrait phone ──────────────────────────────────────────────────────────
   videoStrip: {
     width: '100%',
     backgroundColor: '#030712',
@@ -303,36 +465,43 @@ const styles = StyleSheet.create({
   },
   portraitTopBar: {
     position: 'absolute',
-    top: 0,
     left: 0,
     right: 0,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 12,
-    backgroundColor: 'rgba(3,7,18,0.75)',
+    backgroundColor: 'rgba(3,7,18,0.85)',
     gap: 8,
+    zIndex: 20,
   },
   portraitChannelBadge: {
     flex: 1,
     alignItems: 'center',
   },
-  portraitChNum: {
-    color: '#60a5fa',
-    fontSize: 12,
-    fontWeight: '800',
-    letterSpacing: 1,
-  },
   portraitChName: {
     color: '#94a3b8',
-    fontSize: 11,
-    maxWidth: 150,
+    fontSize: 13,
+    fontWeight: '600',
+    maxWidth: 200,
   },
   portraitListContainer: {
     flex: 1,
     backgroundColor: '#030712',
   },
+  topBarRightIcons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  iconButton: {
+    padding: 6,
+    borderRadius: 8,
+    backgroundColor: 'rgba(30,41,59,0.6)',
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
 
-  // ── Landscape / TV overlay ──────────────────────────────────────────────────
+  // Landscape / TV
   tapCatcher: {
     zIndex: 1,
     backgroundColor: 'transparent',
@@ -364,48 +533,134 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flex: 1,
   },
-  appName: {
-    fontSize: 15,
-    fontWeight: '900',
-    color: '#f1f5f9',
-    letterSpacing: 0.3,
-  },
+  appName: { fontSize: 15, fontWeight: '900', color: '#f1f5f9', letterSpacing: 0.3 },
   tvAppName: { fontSize: 20 },
-  modeName: {
-    fontSize: 10,
-    color: '#334155',
-    fontWeight: '500',
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-  },
+  modeName: { fontSize: 10, color: '#334155', fontWeight: '500', textTransform: 'uppercase', letterSpacing: 0.8 },
   topBarRight: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
   },
-  channelInfoBadge: {
-    alignItems: 'flex-end',
-    marginRight: 4,
-  },
-  chNumBig: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: '#60a5fa',
-    letterSpacing: 1,
-  },
+  channelInfoBadge: { alignItems: 'flex-end', marginRight: 4 },
+  chNumBig: { fontSize: 13, fontWeight: '800', color: '#60a5fa', letterSpacing: 1 },
   tvChNumBig: { fontSize: 18 },
-  chNameSmall: {
-    fontSize: 11,
-    color: '#475569',
-    maxWidth: 160,
-    flexShrink: 1,
-  },
+  chNameSmall: { fontSize: 11, color: '#475569', maxWidth: 160, flexShrink: 1 },
   panel: {
     position: 'absolute',
     left: isTV ? 14 : 8,
     right: isTV ? 14 : 8,
     bottom: isTV ? 14 : 8,
   },
+
+  // Stream modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#0f172a',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    maxHeight: '70%',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#f1f5f9',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  streamItem: {
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1e293b',
+    borderRadius: 8,
+    marginBottom: 4,
+  },
+  streamItemActive: {
+    backgroundColor: 'rgba(59,130,246,0.15)',
+    borderLeftWidth: 3,
+    borderLeftColor: '#3b82f6',
+  },
+  streamItemText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#e2e8f0',
+  },
+  noStreamsText: {
+    color: '#64748b',
+    textAlign: 'center',
+    marginVertical: 20,
+  },
+  closeButton: {
+    marginTop: 16,
+    alignSelf: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 24,
+    backgroundColor: '#1e293b',
+    borderRadius: 10,
+  },
+  closeButtonText: {
+    color: '#94a3b8',
+    fontWeight: '600',
+  },
+});
+
+const fullscreenStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#000',
+    justifyContent: 'center',
+  },
+  exitBtn: {
+    position: 'absolute',
+    top: 16,
+    right: 16,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    padding: 8,
+    borderRadius: 8,
+    zIndex: 10,
+  },
+});
+
+const logoStyles = StyleSheet.create({
+  container: {
+    backgroundColor: '#1d4ed8',
+    padding: isTV ? 10 : 7,
+    borderRadius: 10,
+    marginRight: 10,
+    shadowColor: '#3b82f6',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.6,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+});
+
+const settingsStyles = StyleSheet.create({
+  btn: {
+    backgroundColor: 'rgba(30,41,59,0.8)',
+    padding: isTV ? 12 : 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+});
+
+const placeholderStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#030712',
+    gap: 10,
+  },
+  text: { fontSize: 18, color: '#1f2937', fontWeight: '700' },
+  tvText: { fontSize: 28 },
+  sub: { fontSize: 13, color: '#111827' },
 });
 
 export default SimpleUIScreen;
