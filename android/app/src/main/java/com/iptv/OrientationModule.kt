@@ -1,4 +1,5 @@
-package com.iptv   
+package com.iptv
+
 import android.content.pm.ActivityInfo
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
@@ -11,17 +12,19 @@ class OrientationModule(private val reactContext: ReactApplicationContext) :
 
     @ReactMethod
     fun lockToLandscape() {
-        val activity = currentActivity ?: return
+        val activity = reactApplicationContext.currentActivity ?: return
         activity.runOnUiThread {
-            activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            activity.requestedOrientation =
+                ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         }
     }
 
     @ReactMethod
     fun lockToPortrait() {
-        val activity = currentActivity ?: return
+        val activity = reactApplicationContext.currentActivity ?: return
         activity.runOnUiThread {
-            activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            activity.requestedOrientation =
+                ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         }
     }
 }
