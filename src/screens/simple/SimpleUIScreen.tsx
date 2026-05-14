@@ -75,11 +75,17 @@ const SimpleUIScreen: React.FC<Props> = ({ navigation }) => {
   // lockToLandscape() causes isLandscape→true (which would flip isPortraitPhone
   // to false and render the TV overlay), the Modal sits on top and hides it.
   const [isFullscreenModalVisible, setIsFullscreenModalVisible] = useState(false);
+const [fullscreenVideoReady, setFullscreenVideoReady] = useState(false);   // ← ADD
+const fullscreenReadyTimer = useRef<ReturnType<typeof setTimeout> | null>(null); // ← ADD
 
   const handleEnterFullscreen = useCallback(() => {
-    lockToLandscape();                    // 1. Rotate the Android activity
-    setIsFullscreenModalVisible(true);    // 2. Cover the screen before layout flips
-  }, []);
+  setFullscreenVideoReady(false);                 // reset before opening  ← ADD
+  lockToLandscape();
+  setIsFullscreenModalVisible(true);
+  // Give the Surface ~300 ms to stabilise after orientation settles       ← ADD
+  if (fullscreenReadyTimer.current) clearTimeout(fullscreenReadyTimer.current);
+  fullscreenReadyTimer.current = setTimeout(() => setFullscreenVideoReady(true), 300);
+}, []);
 
   const handleExitFullscreen = useCallback(() => {
     setIsFullscreenModalVisible(false);   // 1. Dismiss modal first
@@ -110,11 +116,19 @@ const SimpleUIScreen: React.FC<Props> = ({ navigation }) => {
   const resetPortraitControlsRef = useRef(resetPortraitControls);
   useEffect(() => { resetPortraitControlsRef.current = resetPortraitControls; }, [resetPortraitControls]);
 
-  const handleExitFullscreenStable = useCallback(() => {
-    setIsFullscreenModalVisible(false);
-    lockToPortrait();
-    resetPortraitControlsRef.current();
-  }, []);
+const handleExitFullscreenStable = useCallback(() => {
+  setFullscreenVideoReady(false);                 // tear down player first ← ADD
+  if (fullscreenReadyTimer.current) clearTimeout(fullscreenReadyTimer.current);
+  setIsFullscreenModalVisible(false);
+  lockToPortrait();
+  resetPortraitControlsRef.current();
+}, []);
+
+useEffect(() => {
+  return () => {
+    if (fullscreenReadyTimer.current) clearTimeout(fullscreenReadyTimer.current);
+  };
+}, []);
 
   useEffect(() => {
     resetPortraitControls();
@@ -346,38 +360,39 @@ const SimpleUIScreen: React.FC<Props> = ({ navigation }) => {
           portrait strip player (different key) so the strip player keeps
           its state untouched while this modal is visible.
       ═══════════════════════════════════════════════════════════════════ */}
-      <Modal
-        visible={isFullscreenModalVisible}
-        transparent={false}
-        animationType="fade"
-        supportedOrientations={['landscape', 'landscape-left', 'landscape-right']}
-        onRequestClose={handleExitFullscreenStable}
-        statusBarTranslucent
-      >
-        <View style={fullscreenStyles.container}>
-          <StatusBar hidden />
+     <Modal
+  visible={isFullscreenModalVisible}
+  transparent={false}
+  animationType="fade"
+  supportedOrientations={['landscape', 'landscape-left', 'landscape-right']}
+  onRequestClose={handleExitFullscreenStable}
+  statusBarTranslucent
+>
+  <View style={fullscreenStyles.container}>
+    <StatusBar hidden />
 
-          {currentChannel ? (
-            <VideoPlayer
-              key={fullscreenVideoKey}
-              channel={currentChannel}
-              fullscreen={false}         // Modal itself is the fullscreen container
-              onFullscreenDismiss={handleExitFullscreenStable}
-            />
-          ) : (
-            <NoChannelPlaceholder isTV={false} />
-          )}
+    {/* ↓ Only mount VideoPlayer once the Surface is layout-stable */}
+    {currentChannel && fullscreenVideoReady ? (
+      <VideoPlayer
+        key={fullscreenVideoKey}
+        channel={currentChannel}
+        fullscreen={false}
+        onFullscreenDismiss={handleExitFullscreenStable}
+      />
+    ) : (
+      // Show a black screen while waiting — prevents the frozen-frame flash
+      <View style={{ flex: 1, backgroundColor: '#000' }} />
+    )}
 
-          {/* Exit button */}
-          <TouchableOpacity
-            style={fullscreenStyles.exitBtn}
-            onPress={handleExitFullscreenStable}
-            accessibilityLabel="Exit full screen"
-          >
-            <Icon name="fullscreen-exit" size={24} color="#fff" />
-          </TouchableOpacity>
-        </View>
-      </Modal>
+    <TouchableOpacity
+      style={fullscreenStyles.exitBtn}
+      onPress={handleExitFullscreenStable}
+      accessibilityLabel="Exit full screen"
+    >
+      <Icon name="fullscreen-exit" size={24} color="#fff" />
+    </TouchableOpacity>
+  </View>
+</Modal>
 
       {/* ── Stream source modal ─────────────────────────────────────────────── */}
       <Modal
