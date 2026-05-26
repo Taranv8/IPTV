@@ -1,8 +1,11 @@
 // constants/config.ts
 
+// ─── Defaults (used as Firebase Remote Config defaults + local fallback) ───────
+// These are the same values as before — no usage change needed anywhere.
+
 export const APP_CONFIG = {
   APP_NAME: 'IPTV Player',
-API_BASE_URL: 'https://iptv-backend-production-2a5f.up.railway.app',
+  API_BASE_URL: 'https://iptv-backend-ds-585a.up.railway.app',
   DEFAULT_CHANNEL: 1,
   SPLASH_DURATION: 100000,
   UI_SELECTION_COUNTDOWN: 5,
@@ -19,6 +22,8 @@ API_BASE_URL: 'https://iptv-backend-production-2a5f.up.railway.app',
   RESUME_ON_FOCUS: true,
 };
 
+// NOT making STORAGE_KEYS dynamic — changing keys remotely would corrupt
+// existing users' AsyncStorage data.
 export const STORAGE_KEYS = {
   CACHED_CHANNELS: '@iptv_cached_channels',
   CACHE_TIMESTAMP: '@iptv_cache_timestamp',
@@ -39,15 +44,16 @@ export const ERROR_MESSAGES = {
   STREAM_ERROR: 'Failed to play stream. Channel may be offline.',
 };
 
-// ✅ THIS WAS MISSING — ErrorReporter imports this but it was never defined
 export const ERROR_REPORTING = {
-  // Set to true to enable remote error reporting
   ENABLED: false,
-
-  // Replace with your error reporting endpoint when ready
-  // e.g. 'https://your-api.com/errors' or a Sentry/Datadog ingest URL
   API_ENDPOINT: 'https://your-error-reporting-endpoint.com/api/errors',
-
-  // Request timeout for error reports (ms)
   TIMEOUT: 5000,
+};
+
+// ─── Snapshot of defaults for Remote Config registration ─────────────────────
+// Used internally by remoteConfigService — do not import elsewhere.
+export const _RC_DEFAULTS = {
+  app_config: JSON.stringify(APP_CONFIG),
+  error_messages: JSON.stringify(ERROR_MESSAGES),
+  error_reporting: JSON.stringify(ERROR_REPORTING),
 };

@@ -1,6 +1,6 @@
 import { APP_CONFIG } from '../../constants/config';
 
-const BASE_URL        = 'https://iptv-backend-production-2a5f.up.railway.app';
+const BASE_URL = APP_CONFIG.API_BASE_URL;
 const PAGE_SIZE       = 100;
 const TOTAL_TIMEOUT_MS = 60_000;
 const PAGE_TIMEOUT_MS  = 15_000;

@@ -1,46 +1,31 @@
 // src/components/player/VideoPlayer.tsx
 //
-// LIVE-STREAM OPTIMISATIONS (this version)
+// HARD-RESTART ON MID-STREAM 22004  (on top of stream-health additions)
 //
-// 1. bufferForPlaybackMs: 200 (was 500)
-//    ExoPlayer starts playing after just 200 ms of buffered data — the
-//    single biggest win for "instant" channel switching on a decent link.
+// Problem that prompted this change
+// ──────────────────────────────────
+// ExoPlayer fires ERROR_CODE_IO_BAD_HTTP_STATUS (22004) after several minutes
+// of successful playback.  This is almost always a transient CDN / auth-token
+// refresh — the URL itself is still valid.  The previous code treated it the
+// same as a pre-play fatal error and immediately advanced to the next source,
+// cycling away from the only working URL.
 //
-// 2. backBufferDurationMs: 0 (was 3 000)
-//    Live streams never need to seek backward. Dropping the back buffer
-//    frees ExoPlayer to focus bandwidth entirely on the forward edge.
+// Fix
+// ───
+// • hasLoadedOnce tracks whether the current source ever produced a frame.
+// • hardRestartCountRef tracks per-source hard-restart attempts.
+// • When 22004 fires AND the source was playing (hasLoadedOnce = true) AND we
+//   haven't yet tried a hard restart → force-remount the <Video> on the SAME
+//   URL (streamRestartKey bump changes the key even though the URL is the
+//   same) and show "Reconnecting…".
+// • Only if the hard restart also fails do we advance to the next source.
+// • hardRestartCountRef resets to 0 on every successful first-frame
+//   (handleReadyForDisplay) and on every source advance (reconnect).
+// • MAX_HARD_RESTARTS = 1  (one silent reconnect; more would just stall the
+//   user unnecessarily).
 //
-// 3. minBufferMs: 1 000 | maxBufferMs: 8 000 (was 3 000 / 15 000)
-//    Keeping the look-ahead window short means ExoPlayer chases the live
-//    edge more aggressively instead of buffering segments far into the
-//    future (which also prevents signed-token expiry issues).
-//
-// 4. bufferForPlaybackAfterRebufferMs: 1 000 (was 2 500)
-//    Resumes faster after a network hiccup — the most common mid-watch
-//    disruption on mobile/Wi-Fi.
-//
-// 5. Resolver skipped on source failover
-//    StreamResolver does a HEAD (or GET) against the URL before handing
-//    it to ExoPlayer — useful for the initial load but pure dead time when
-//    switching to a backup source that is already a known .m3u8/.mpd.
-//    reconnect() now passes the raw StreamUrl entry straight to ExoPlayer;
-//    only the very first load goes through the resolver.
-//
-// 6. STALL_TIMEOUT_MS: 8 000 (was 15 000)
-//    15 s of stall is too long to ask a viewer to wait before we try the
-//    next source. 8 s covers a normal rebuffer while still catching a truly
-//    dead stream promptly.
-//
-// 7. RETRY_DELAY_MS: 2 000 | INTER_CYCLE_DELAY_MS: 6 000 (were 5 000 / 10 000)
-//    Tighter retry pacing without hammering servers.
-//
-// 8. automaticallyWaitsToMinimizeStalling: false (iOS)
-//    Prevents AVPlayer from holding back playback start waiting to fill a
-//    larger buffer on slow links — we want the first frame now, not later.
-//
-// 9. All other logic (stall watchdog, channelRef, hasLoadedOnce reset on
-//    reconnect, single-object spinner state) is unchanged from the previous
-//    version — those patterns are already correct.
+// All previous additions (stream-health, stall watchdog, buffer config, etc.)
+// are unchanged.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
@@ -63,13 +48,19 @@ import {
   getStreamType,
   VLC_USER_AGENT,
 } from '../../services/stream/StreamResolver';
+import { StreamHealthService, HealthMap } from '../../services/stream/StreamHealthService';
 import { VideoErrorBoundary } from './VideoErrorBoundary';
 
 // ─── Timing constants ─────────────────────────────────────────────────────────
 
-const STALL_TIMEOUT_MS     =  8_000;   // ↓ was 15 000 — detect dead streams faster
-const RETRY_DELAY_MS       =  2_000;   // ↓ was  5 000
-const INTER_CYCLE_DELAY_MS =  6_000;   // ↓ was 10 000
+const STALL_TIMEOUT_MS     =  8_000;
+const RETRY_DELAY_MS       =  2_000;
+const INTER_CYCLE_DELAY_MS =  6_000;
+
+// ─── Hard-restart config ──────────────────────────────────────────────────────
+// How many silent in-place restarts to attempt on the same URL before giving
+// up and advancing to the next source.  1 is enough for most CDN hiccups.
+const MAX_HARD_RESTARTS = 1;
 
 // ─── ExoPlayer error codes ────────────────────────────────────────────────────
 
@@ -78,6 +69,8 @@ const EXO_BAD_HTTP_STATUS       = 22004;
 const EXO_MANIFEST_MALFORMED    = 23002;
 const EXO_CONTAINER_UNSUPPORTED = 23003;
 
+// Errors that should skip the current source immediately when they fire
+// BEFORE the stream has ever played (pre-play fatal).
 const SKIP_NOW_CODES = new Set([
   EXO_BAD_HTTP_STATUS,
   EXO_MANIFEST_MALFORMED,
@@ -85,28 +78,13 @@ const SKIP_NOW_CODES = new Set([
 ]);
 
 // ─── Buffer config (tuned for live TV) ───────────────────────────────────────
-//
-//  bufferForPlaybackMs: 200
-//    Start on just 0.2 s of data. Feels nearly instant on a 4G/Wi-Fi link.
-//
-//  bufferForPlaybackAfterRebufferMs: 1 000
-//    Resume fast after a brief stall — no need to re-fill a large buffer.
-//
-//  backBufferDurationMs: 0
-//    Live means forward-only. Freeing the back buffer concentrates bandwidth
-//    on the segment ExoPlayer is about to play.
-//
-//  maxBufferMs: 8 000
-//    Keep the look-ahead window tight. Signed segment tokens (hdnea, etc.)
-//    expire in 20–30 s; fetching 8 s ahead leaves plenty of safety margin
-//    while keeping the player right behind the live edge.
 
 const BUFFER_CONFIG = {
-  minBufferMs:                       1_000,   // ↓ was 3 000
-  maxBufferMs:                       8_000,   // ↓ was 15 000
-  bufferForPlaybackMs:                 200,   // ↓ was   500 — biggest UX win
-  bufferForPlaybackAfterRebufferMs:  1_000,   // ↓ was 2 500
-  backBufferDurationMs:                  0,   // ↓ was 3 000 — live = no back buffer
+  minBufferMs:                       1_000,
+  maxBufferMs:                       8_000,
+  bufferForPlaybackMs:                 200,
+  bufferForPlaybackAfterRebufferMs:  1_000,
+  backBufferDurationMs:                  0,
   cacheSizeMb:                           0,
 } as const;
 
@@ -157,10 +135,11 @@ async function safeReport(msg: string, code: string, extras: Record<string, unkn
 
 interface SpinnerStatus { visible: boolean; label: string; error: string | null }
 
-const RESOLVING: SpinnerStatus = { visible: true,  label: 'Resolving stream…', error: null };
-const LOADING:   SpinnerStatus = { visible: true,  label: 'Loading channel…',  error: null };
-const BUFFERING: SpinnerStatus = { visible: true,  label: 'Buffering…',        error: null };
-const HIDDEN:    SpinnerStatus = { visible: false, label: '',                  error: null };
+const RESOLVING:     SpinnerStatus = { visible: true,  label: 'Resolving stream…',  error: null };
+const LOADING:       SpinnerStatus = { visible: true,  label: 'Loading channel…',   error: null };
+const BUFFERING:     SpinnerStatus = { visible: true,  label: 'Buffering…',         error: null };
+const RECONNECTING:  SpinnerStatus = { visible: true,  label: 'Reconnecting…',      error: null };
+const HIDDEN:        SpinnerStatus = { visible: false, label: '',                   error: null };
 
 function errorStatus(label: string, error: string): SpinnerStatus {
   return { visible: true, label, error };
@@ -173,12 +152,16 @@ interface Props {
   fullscreen?: boolean;
   onFullscreenDismiss?: () => void;
 }
+
 // ─── Inner player ─────────────────────────────────────────────────────────────
 
 const VideoPlayerInner: React.FC<Props> = ({ channel, fullscreen = false, onFullscreenDismiss }) => {
 
-  const [stream,  setStream]  = useState<ResolvedStream | null>(null);
-  const [spinner, setSpinner] = useState<SpinnerStatus>(RESOLVING);
+  const [stream,           setStream]           = useState<ResolvedStream | null>(null);
+  const [spinner,          setSpinner]          = useState<SpinnerStatus>(RESOLVING);
+  const [containerReady,   setContainerReady]   = useState(false);
+  // ── NEW: bumping this forces <Video> to remount even when the URL is the same
+  const [streamRestartKey, setStreamRestartKey] = useState(0);
 
   const videoRef      = useRef<any>(null);
   const cancelledRef  = useRef(false);
@@ -191,7 +174,19 @@ const VideoPlayerInner: React.FC<Props> = ({ channel, fullscreen = false, onFull
   const triedInCycleRef = useRef(0);
   const totalSourcesRef = useRef(0);
 
-  // Stable refs so callbacks never capture stale state
+  // ── NEW: hard-restart tracking ────────────────────────────────────────────
+  // hardRestartCountRef — how many times we've silently restarted the
+  //   *current* source URL after a mid-stream 22004 error.
+  // currentEntryRef     — the raw StreamUrl entry currently being played,
+  //   needed to rebuild the same ResolvedStream for a hard restart.
+  const hardRestartCountRef = useRef(0);
+  const currentEntryRef     = useRef<any>(null);
+
+  // Stream health
+  const healthRef     = useRef<HealthMap>({});
+  const sortedUrlsRef = useRef<NonNullable<Channel['streamUrls']>>([]);
+
+  // Stable refs
   const streamRef  = useRef<ResolvedStream | null>(null);
   const channelRef = useRef(channel);
   useEffect(() => { streamRef.current = stream; },   [stream]);
@@ -245,7 +240,10 @@ const VideoPlayerInner: React.FC<Props> = ({ channel, fullscreen = false, onFull
   // ── Source advance ────────────────────────────────────────────────────────
 
   const advanceSource = useCallback((): { url: string; entry: any } | null => {
-    const urls = channel.streamUrls ?? [];
+    const urls = sortedUrlsRef.current.length
+      ? sortedUrlsRef.current
+      : (channel.streamUrls ?? []);
+
     if (urls.length === 0) return null;
 
     totalSourcesRef.current = urls.length;
@@ -255,19 +253,18 @@ const VideoPlayerInner: React.FC<Props> = ({ channel, fullscreen = false, onFull
     sourceIndexRef.current = (idx + 1) % urls.length;
 
     const entry = urls[idx];
+    const stat  = healthRef.current[entry?.url ?? ''];
+    const tag   = stat ? `score=${stat.score} dead=${stat.isDead}` : 'new/unknown';
+
     console.log(
-      `[VideoPlayer] 🔀 Source ${idx + 1}/${urls.length}: "${entry?.source ?? 'unknown'}" — ${entry?.url}`,
+      `[VideoPlayer] 🔀 Source ${idx + 1}/${urls.length}: ` +
+      `"${entry?.source ?? 'unknown'}" [${tag}] — ${entry?.url}`,
     );
+
     return { url: entry?.url, entry };
   }, [channel.streamUrls]);
 
-  // ── Build a ResolvedStream directly from a StreamUrl entry ────────────────
-  //
-  // On source failover we skip StreamResolver entirely (no HEAD/GET round-trip)
-  // and hand the raw URL straight to ExoPlayer. This saves 1–2 s per switch.
-  //
-  // The resolver is still used for the initial load because the first URL may
-  // be an opaque wrapper that needs unwrapping.
+  // ── Build ResolvedStream from a StreamUrl entry ───────────────────────────
 
   const buildStreamDirect = useCallback((entry: any): ResolvedStream => {
     const url = typeof entry === 'string' ? entry : entry?.url ?? '';
@@ -293,14 +290,48 @@ const VideoPlayerInner: React.FC<Props> = ({ channel, fullscreen = false, onFull
     return { url, type: getStreamType(url), userAgent, httpHeaders, drm: null };
   }, []);
 
-  // ── Full reconnect — uses raw URL, skips resolver ─────────────────────────
+  // ── NEW: hard restart — same source URL, new <Video> instance ────────────
+  //
+  // Forces a full Video remount on the current URL by bumping streamRestartKey.
+  // The key on <Video> is `${stream.url}-${streamRestartKey}`, so even if the
+  // URL string is identical React will unmount → remount the native player,
+  // which is equivalent to the user switching away and back.
+
+  const hardRestartStream = useCallback(() => {
+    if (cancelledRef.current) return;
+
+    const entry = currentEntryRef.current;
+    if (!entry) {
+      // No entry to restart from — fall back to normal source advance
+      scheduleRetryRef.current(true);
+      return;
+    }
+
+    hardRestartCountRef.current += 1;
+    hasLoadedOnce.current = false;
+    clearAllTimers();
+
+    const resolved = buildStreamDirect(entry);
+    console.log(
+      `[VideoPlayer] 🔄 Hard restart #${hardRestartCountRef.current}` +
+      ` on same source: ${resolved.url}`,
+    );
+
+    setSpinner(RECONNECTING);
+    // Update stream state first (same URL but fresh object), then bump the
+    // restart key so the Video key prop actually changes and triggers a remount.
+    setStream({ ...resolved });
+    setStreamRestartKey(k => k + 1);
+  }, [buildStreamDirect, clearAllTimers]);
+
+  // ── Full reconnect — advance source ──────────────────────────────────────
 
   const reconnect = useCallback(async (skipNow = false) => {
     if (cancelledRef.current) return;
 
-    // Disarm the stall watchdog so it doesn't fire during the new source's
-    // initial buffer-fill phase (same fix as the previous version).
-    hasLoadedOnce.current = false;
+    hasLoadedOnce.current   = false;
+    hardRestartCountRef.current = 0;   // ← reset hard-restart budget
+    currentEntryRef.current = null;
     clearAllTimers();
 
     const next = advanceSource();
@@ -327,7 +358,7 @@ const VideoPlayerInner: React.FC<Props> = ({ channel, fullscreen = false, onFull
       label: `Trying source… (${Math.min(triedInCycleRef.current, totalSourcesRef.current)}/${totalSourcesRef.current})`,
     });
 
-    // ── Skip resolver: hand the raw entry straight to ExoPlayer ──────────
+    currentEntryRef.current = next.entry ?? next.url;  // ← track the entry
     const resolved = buildStreamDirect(next.entry ?? next.url);
     console.log(`[VideoPlayer] ⚡ Direct → ${resolved.type}: ${resolved.url}`);
     setStream({ ...resolved });
@@ -352,12 +383,19 @@ const VideoPlayerInner: React.FC<Props> = ({ channel, fullscreen = false, onFull
     clearStallTimer();
     stallTimerRef.current = setTimeout(() => {
       if (cancelledRef.current) return;
+      const stalledUrl = streamRef.current?.url ?? '';
+      const ch         = channelRef.current;
       console.warn(`[VideoPlayer] ⚠️ Stall ${STALL_TIMEOUT_MS / 1_000}s — switching source`);
+
+      if (stalledUrl) {
+        StreamHealthService.report(ch.id, stalledUrl, 'stall', STALL_TIMEOUT_MS);
+      }
+
       reconnectRef.current(false);
     }, STALL_TIMEOUT_MS);
   }, [clearStallTimer]);
 
-  // ── Initial load (resolver runs here, once per channel) ───────────────────
+  // ── Initial load ──────────────────────────────────────────────────────────
 
   useEffect(() => {
     if (!channel?.streamUrl && !channel?.streamUrls?.length) return;
@@ -365,20 +403,46 @@ const VideoPlayerInner: React.FC<Props> = ({ channel, fullscreen = false, onFull
     cancelledRef.current = true;
     clearAllTimers();
 
-    cancelledRef.current    = false;
-    hasLoadedOnce.current   = false;
-    sourceIndexRef.current  = 0;
-    triedInCycleRef.current = 0;
-    totalSourcesRef.current = channel.streamUrls?.length ?? 0;
+    cancelledRef.current        = false;
+    hasLoadedOnce.current       = false;
+    hardRestartCountRef.current = 0;
+    currentEntryRef.current     = null;
+    sourceIndexRef.current      = 0;
+    triedInCycleRef.current     = 0;
+    healthRef.current           = {};
+
+    sortedUrlsRef.current   = channel.streamUrls ?? [];
+    totalSourcesRef.current = sortedUrlsRef.current.length;
 
     setStream(null);
     setSpinner(RESOLVING);
+    setContainerReady(false);
+    setStreamRestartKey(0);
 
     console.log(`[VideoPlayer] ── "${channel.name}" | ${totalSourcesRef.current} source(s)`);
 
-    const firstEntry = channel.streamUrls?.[0] ?? channel.streamUrl;
-
     (async () => {
+      // Step 1: fetch health and sort URLs
+      const health = await StreamHealthService.fetchHealth(channel.id);
+      if (cancelledRef.current) return;
+
+      healthRef.current       = health;
+      const sorted            = StreamHealthService.sort(channel.streamUrls ?? [], health);
+      sortedUrlsRef.current   = sorted;
+      totalSourcesRef.current = sorted.length;
+
+      const deadCount = sorted.filter(e => health[e.url]?.isDead).length;
+      if (deadCount > 0) {
+        console.log(
+          `[VideoPlayer] 💀 ${deadCount}/${sorted.length} sources marked dead — sorted to back`,
+        );
+      }
+
+      if (cancelledRef.current) return;
+
+      // Step 2: resolve the first (healthiest) source
+      const firstEntry = sorted[0] ?? channel.streamUrl;
+
       let resolved: ResolvedStream | null = null;
       try {
         resolved = await StreamResolver.resolve(firstEntry);
@@ -392,10 +456,10 @@ const VideoPlayerInner: React.FC<Props> = ({ channel, fullscreen = false, onFull
 
       if (resolved) {
         console.log(`[VideoPlayer] ✅ Initial → ${resolved.type}: ${resolved.url}`);
+        currentEntryRef.current = firstEntry;   // ← track the entry
         setStream(resolved);
         setSpinner(LOADING);
       } else {
-        // Resolver failed — switch to the next source immediately
         reconnectRef.current(true);
       }
     })();
@@ -403,7 +467,6 @@ const VideoPlayerInner: React.FC<Props> = ({ channel, fullscreen = false, onFull
     return () => {
       cancelledRef.current  = true;
       hasLoadedOnce.current = false;
-
       clearAllTimers();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -420,14 +483,20 @@ const VideoPlayerInner: React.FC<Props> = ({ channel, fullscreen = false, onFull
     console.log(`[VideoPlayer] 📋 Metadata loaded "${channelRef.current.name}"`);
   }, []);
 
-  // Hides the spinner on the first decoded video frame — not on metadata.
   const handleReadyForDisplay = useCallback(() => {
     if (cancelledRef.current) return;
+
     clearAllTimers();
-    hasLoadedOnce.current   = true;
-    triedInCycleRef.current = 0;
+    hasLoadedOnce.current       = true;
+    triedInCycleRef.current     = 0;
+    hardRestartCountRef.current = 0;   // ← reset: stream is healthy again
     setSpinner(HIDDEN);
-    console.log(`[VideoPlayer] ▶️ Playing "${channelRef.current.name}"`);
+
+    const url = streamRef.current?.url ?? '';
+    const ch  = channelRef.current;
+    console.log(`[VideoPlayer] ▶️ Playing "${ch.name}"`);
+
+    if (url) StreamHealthService.report(ch.id, url, 'success');
   }, [clearAllTimers]);
 
   const handleBuffer = useCallback(({ isBuffering }: { isBuffering: boolean }) => {
@@ -441,6 +510,20 @@ const VideoPlayerInner: React.FC<Props> = ({ channel, fullscreen = false, onFull
     startStallWatchdog();
   }, [clearStallTimer, startStallWatchdog]);
 
+  // ── UPDATED handleError ───────────────────────────────────────────────────
+  //
+  // New logic for EXO_BAD_HTTP_STATUS (22004):
+  //
+  //   • Fired BEFORE first frame (hasLoadedOnce = false)
+  //     → same as before: skip to next source immediately.
+  //
+  //   • Fired AFTER successful playback (hasLoadedOnce = true)
+  //     AND hard-restart budget remaining
+  //     → silent hard restart on the SAME URL (CDN/token hiccup).
+  //
+  //   • Fired AFTER successful playback AND budget exhausted
+  //     → report error + advance source normally.
+
   const handleError = useCallback((err: any) => {
     if (cancelledRef.current) return;
 
@@ -453,32 +536,55 @@ const VideoPlayerInner: React.FC<Props> = ({ channel, fullscreen = false, onFull
 
     console.error(`[VideoPlayer] ❌ ExoPlayer | code=${code ?? 'n/a'} | ${msg ?? 'n/a'}`);
     clearAllTimers();
-    setSpinner(errorStatus('Playback error', `[${code ?? '?'}] ${msg ?? 'Playback error'}`));
 
+    // ── Special case: seek to live edge ───────────────────────────────────
     if (code === EXO_BEHIND_LIVE_WINDOW) {
       setSpinner({ ...LOADING, label: 'Catching up to live…' });
       seekToLiveEdge();
       return;
     }
 
+    // ── NEW: mid-stream 22004 → attempt hard restart first ────────────────
+    if (
+      code === EXO_BAD_HTTP_STATUS &&
+      hasLoadedOnce.current &&
+      hardRestartCountRef.current < MAX_HARD_RESTARTS
+    ) {
+      console.warn(
+        `[VideoPlayer] ⚡ Mid-stream 22004 — attempting hard restart ` +
+        `(${hardRestartCountRef.current + 1}/${MAX_HARD_RESTARTS})`,
+      );
+      // Report to health service (non-fatal — stream may recover)
+      if (stm?.url) StreamHealthService.report(ch.id, stm.url, 'error');
+      hardRestartStream();
+      return;
+    }
+
+    // ── Normal error handling ─────────────────────────────────────────────
+    setSpinner(errorStatus('Playback error', `[${code ?? '?'}] ${msg ?? 'Playback error'}`));
+
+    if (stm?.url) {
+      StreamHealthService.report(ch.id, stm.url, 'error');
+    }
+
     const skipNow = code !== undefined && SKIP_NOW_CODES.has(code);
     if (skipNow) console.warn(`[VideoPlayer] Fatal error ${code} — skipping source now`);
 
-    // Fire-and-forget — don't await so it never blocks the retry path
     safeReport('Playback error', 'PLAYBACK_ERROR', {
-      channelId:   ch.id,
-      channelName: ch.name,
-      streamUrl:   stm?.url ?? ch.streamUrl,
-      streamType:  stm?.type,
-      hasDRM:      !!stm?.drm,
-      drmType:     stm?.drm?.type,
-      exoCode:     code,
-      exoMsg:      msg,
-      exoDomain:   domain,
+      channelId:             ch.id,
+      channelName:           ch.name,
+      streamUrl:             stm?.url ?? ch.streamUrl,
+      streamType:            stm?.type,
+      hasDRM:                !!stm?.drm,
+      drmType:               stm?.drm?.type,
+      exoCode:               code,
+      exoMsg:                msg,
+      exoDomain:             domain,
+      hardRestartAttempts:   hardRestartCountRef.current,
     });
 
     scheduleRetryRef.current(skipNow);
-  }, [clearAllTimers, seekToLiveEdge]);
+  }, [clearAllTimers, seekToLiveEdge, hardRestartStream]);
 
   // ── Source / DRM props ────────────────────────────────────────────────────
 
@@ -511,17 +617,26 @@ const VideoPlayerInner: React.FC<Props> = ({ channel, fullscreen = false, onFull
       `[VideoPlayer] 📺 → type=${stream.type} drm=${drmProp?.type ?? 'none'} url=${stream.url}`,
     );
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stream?.url]);
+  }, [stream?.url, streamRestartKey]);
 
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <View style={styles.container}>
-
-      {stream && (
+    <View
+      style={styles.container}
+      onLayout={(e) => {
+        const { width, height } = e.nativeEvent.layout;
+        if (width > 0 && height > 0 && !containerReady) {
+          setContainerReady(true);
+        }
+      }}
+    >
+      {stream && containerReady && (
         <View style={[styles.videoWrapper, { pointerEvents: 'none' }]}>
           <Video
-            key={stream.url}
+            // ── CHANGED: include streamRestartKey so a hard restart on the
+            // same URL still gives React a new key and forces a full remount.
+            key={`${stream.url}-${streamRestartKey}`}
             ref={videoRef}
             source={{
               uri:     stream.url,
@@ -536,15 +651,15 @@ const VideoPlayerInner: React.FC<Props> = ({ channel, fullscreen = false, onFull
             playInBackground={false}
             playWhenInactive={false}
             ignoreSilentSwitch="ignore"
-            minLoadRetryCount={0}              // surface errors to JS immediately
-            automaticallyWaitsToMinimizeStalling={false}  // iOS: don't wait to fill buffer
+            minLoadRetryCount={0}
+            automaticallyWaitsToMinimizeStalling={false}
             reportBandwidth={false}
             onLoadStart={handleLoadStart}
             onLoad={handleLoad}
-            onReadyForDisplay={handleReadyForDisplay}  // hide spinner on first frame
+            onReadyForDisplay={handleReadyForDisplay}
             onError={handleError}
             fullscreen={fullscreen}
-onFullscreenPlayerWillDismiss={onFullscreenDismiss}
+            onFullscreenPlayerWillDismiss={onFullscreenDismiss}
             onBuffer={handleBuffer}
             focusable={false}
             {...(drmProp ? { drm: drmProp } : {})}
