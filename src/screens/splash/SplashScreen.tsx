@@ -493,7 +493,7 @@ return () => { cancelled = true; };
         {/* App name */}
         <Animated.View style={[styles.nameBlock, { opacity: textOpacity }]}>
           <View style={styles.nameRow}>
-            <Text style={styles.nameMain}>LIVE</Text>
+            <Text style={styles.nameMain}>RUBY</Text>
             <View style={styles.nameBadge}>
               <Text style={styles.nameBadgeText}>TV</Text>
             </View>
