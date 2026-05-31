@@ -4,7 +4,7 @@
 // These are the same values as before — no usage change needed anywhere.
 
 export const APP_CONFIG = {
-  APP_NAME: 'IPTV Player',
+  APP_NAME: 'RUBY TV',
   API_BASE_URL: 'https://iptv-backend-ds-585a.up.railway.app',
   DEFAULT_CHANNEL: 1,
   SPLASH_DURATION: 100000,
