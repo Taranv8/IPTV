@@ -1,7 +1,5 @@
-package com.iptv // TODO: Replace with your actual package name
+package com.iptv
 
-import android.app.ActivityManager
-import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Process
@@ -9,9 +7,7 @@ import android.system.Os
 import com.facebook.react.bridge.*
 import java.io.*
 import java.lang.reflect.Method
-import java.nio.file.Files
 import java.security.MessageDigest
-import java.util.zip.ZipFile
 import kotlin.system.exitProcess
 
 class RootDetectionModule(private val reactContext: ReactApplicationContext) :
@@ -27,8 +23,9 @@ class RootDetectionModule(private val reactContext: ReactApplicationContext) :
             "/system/sd/xbin/su", "/system/bin/failsafe/su", "/data/local/su",
             "/su/bin/su", "/magisk/.core/bin/su", "/sbin/.magisk/bin/su",
             "/data/adb/magisk", "/data/adb/modules", "/cache/magisk.log",
-            "/data/adb/magisk.img", "/sbin/.core/mirror", "/sbin/.core/img",
-            "/proc/net/if_inet6" // Magisk hides this on some builds
+            "/data/adb/magisk.img", "/sbin/.core/mirror", "/sbin/.core/img"
+            // NOTE: /proc/net/if_inet6 removed — it is a normal kernel interface
+            // file present on virtually all devices and causes false positives.
         )
 
         // Dangerous / root-related packages
@@ -43,11 +40,10 @@ class RootDetectionModule(private val reactContext: ReactApplicationContext) :
             "com.devadvance.rootcloakplus", "de.robv.android.xposed.installer",
             "com.saurik.substrate", "com.zachspong.temprootremovejb",
             "com.amphoras.hidemyroot", "com.formyhm.hiderootPremium",
-            "com.amphoras.hidemyrootadfree", "com.zachspong.temprootremovejb",
-            "com.ramdroid.appquarantine", "com.topjohnwu.magisk",
-            "me.weishu.kernelsu", // KernelSU
+            "com.amphoras.hidemyrootadfree",
+            "me.weishu.kernelsu",        // KernelSU
             "io.github.vvb2060.magisk", // Delta Magisk
-            "com.github.fox2code.mmm", // MagiskModuleManager
+            "com.github.fox2code.mmm",  // MagiskModuleManager
             "com.chrisplus.rootmanager", "com.dws.and.permission",
             "com.lxk.tool"
         )
@@ -68,6 +64,16 @@ class RootDetectionModule(private val reactContext: ReactApplicationContext) :
             "de.robv.android.xposed.XposedHelpers",
             "de.robv.android.xposed.callbacks.XC_MethodReplacement",
             "com.saurik.substrate.MS"
+        )
+
+        // Proc-maps patterns that are genuinely suspicious.
+        // REMOVED from original list:
+        //   "anon_inode"  — used heavily by ART/JVM for anonymous mappings; always present
+        //   "memfd:"      — used by the Android graphics stack and JVM; always present
+        //   "zygote64_alt"— valid Zygote variant on some stock ROM builds
+        // Only patterns that have no legitimate presence on stock unrooted devices remain.
+        private val SUSPICIOUS_MAP_PATTERNS = arrayOf(
+            "inject", "hook", "patch", "libsuperhide", "twrp", "busybox"
         )
     }
 
@@ -169,8 +175,7 @@ class RootDetectionModule(private val reactContext: ReactApplicationContext) :
     private fun checkRootFiles(): Boolean {
         for (path in ROOT_PATHS) {
             try {
-                val f = File(path)
-                if (f.exists()) return true
+                if (File(path).exists()) return true
             } catch (_: Exception) {}
         }
         // Also check PATH-based su
@@ -209,23 +214,40 @@ class RootDetectionModule(private val reactContext: ReactApplicationContext) :
     }
 
     // ─── Layer 4: Build properties / tags ─────────────────────────────────────
+    //
+    // FIX: ro.debuggable=1 and ro.secure=0 are present on many stock OEM builds
+    // (especially Xiaomi, Realme, OnePlus engineering batches and some carrier
+    // variants). These values alone are NOT reliable root indicators.
+    //
+    // We now only flag the build if BOTH conditions are true simultaneously AND
+    // the build fingerprint also shows signs of modification. A single property
+    // being "developer-friendly" is not enough to block.
 
     private fun checkBuildProps(): Boolean {
-        // Official retail builds always have "release" tags
+        // test-keys and dev-keys in the build tags are reliable indicators.
         val tags = Build.TAGS
-        if (tags != null && (tags.contains("test-keys") || tags.contains("dev-keys"))) return true
+        if (tags != null && (tags.contains("test-keys") || tags.contains("dev-keys"))) {
+            return true
+        }
 
-        // Fingerprint anomalies
+        // Fingerprint anomalies that indicate a non-retail build
         val fp = Build.FINGERPRINT
-        if (fp.contains("generic") || fp.contains("unknown") ||
-            fp.contains("test-keys") || fp.startsWith("android_x86")) return true
+        if (fp.contains("test-keys") || fp.startsWith("android_x86")) {
+            return true
+        }
+        // "generic" / "unknown" can appear on emulators but should not block
+        // real physical devices, so we only flag fingerprints that also lack
+        // a valid manufacturer/model segment (i.e. purely generic strings).
+        if (fp == "generic" || fp == "unknown") {
+            return true
+        }
 
-        // Read ro.debuggable prop via native
+        // Read system properties: only flag if BOTH ro.debuggable=1 AND
+        // ro.secure=0 are set at the same time. Either alone is insufficient.
         return try {
             val roDebuggable = readProp("ro.debuggable")
             val roSecure = readProp("ro.secure")
-            val roAllowRoot = readProp("ro.allow.mock.location")
-            roDebuggable == "1" || roSecure == "0"
+            roDebuggable == "1" && roSecure == "0"
         } catch (_: Exception) {
             false
         }
@@ -260,43 +282,32 @@ class RootDetectionModule(private val reactContext: ReactApplicationContext) :
     // ─── Layer 6: Xposed / Substrate ─────────────────────────────────────────
 
     private fun checkXposed(): Boolean {
-        // Class loader inspection
         for (cls in XPOSED_CLASSES) {
             try {
                 Class.forName(cls)
                 return true
             } catch (_: ClassNotFoundException) {}
         }
-
-        // Stack trace inspection for Xposed hooks
         try {
             throw Exception("probe")
         } catch (e: Exception) {
-            val stack = e.stackTrace
-            for (frame in stack) {
+            for (frame in e.stackTrace) {
                 val cls = frame.className
                 if (cls.contains("de.robv.android.xposed") ||
                     cls.contains("com.saurik.substrate")) return true
             }
         }
-
-        // Check loaded native libs
         try {
             val mapsFile = File("/proc/${Process.myPid()}/maps")
             if (mapsFile.canRead()) {
-                val reader = mapsFile.bufferedReader()
-                var line = reader.readLine()
-                while (line != null) {
-                    if (line.contains("XposedBridge") || line.contains("substrate")) {
-                        reader.close()
-                        return true
+                mapsFile.bufferedReader().use { reader ->
+                    reader.lineSequence().forEach { line ->
+                        if (line.contains("XposedBridge") ||
+                            line.contains("substrate")) return true
                     }
-                    line = reader.readLine()
                 }
-                reader.close()
             }
         } catch (_: Exception) {}
-
         return false
     }
 
@@ -307,7 +318,7 @@ class RootDetectionModule(private val reactContext: ReactApplicationContext) :
             val socket = java.net.Socket()
             socket.connect(java.net.InetSocketAddress("127.0.0.1", FRIDA_PORT), 100)
             socket.close()
-            true // Port is open → Frida server running
+            true
         } catch (_: Exception) {
             false
         }
@@ -317,19 +328,14 @@ class RootDetectionModule(private val reactContext: ReactApplicationContext) :
         return try {
             val mapsFile = File("/proc/${Process.myPid()}/maps")
             if (!mapsFile.canRead()) return false
-            val reader = mapsFile.bufferedReader()
-            var line = reader.readLine()
-            while (line != null) {
-                val lower = line.lowercase()
-                for (lib in FRIDA_LIBS) {
-                    if (lower.contains(lib)) {
-                        reader.close()
-                        return true
+            mapsFile.bufferedReader().use { reader ->
+                reader.lineSequence().forEach { line ->
+                    val lower = line.lowercase()
+                    for (lib in FRIDA_LIBS) {
+                        if (lower.contains(lib)) return true
                     }
                 }
-                line = reader.readLine()
             }
-            reader.close()
             false
         } catch (_: Exception) {
             false
@@ -337,7 +343,6 @@ class RootDetectionModule(private val reactContext: ReactApplicationContext) :
     }
 
     private fun checkFridaLibs(): Boolean {
-        // Check /proc/self/fd for frida agent file descriptors
         return try {
             val fdDir = File("/proc/self/fd")
             val fds = fdDir.listFiles() ?: return false
@@ -354,30 +359,31 @@ class RootDetectionModule(private val reactContext: ReactApplicationContext) :
     }
 
     // ─── Layer 8: /proc/maps anomaly check ────────────────────────────────────
+    //
+    // FIX: Removed "anon_inode", "memfd:", and "zygote64_alt" from the pattern
+    // list. These are all completely normal on stock Android:
+    //
+    //   anon_inode  — Used by ART/JVM for anonymous file descriptors (eventfd,
+    //                 timerfd, signalfd, epoll). Present in every Android process.
+    //   memfd:      — Used by the Android graphics stack (gralloc, SurfaceFlinger
+    //                 shared memory), Skia, and the JVM. Always present.
+    //   zygote64_alt— A valid Zygote process variant used by some OEM ROM builds.
+    //
+    // The remaining patterns (inject, hook, patch, libsuperhide, twrp, busybox)
+    // have no legitimate reason to appear in a normal app's memory map.
 
     private fun checkProcMaps(): Boolean {
         return try {
             val mapsFile = File("/proc/${Process.myPid()}/maps")
             if (!mapsFile.canRead()) return false
-
-            val suspiciousPatterns = arrayOf(
-                "inject", "hook", "patch", "zygote64_alt", "memfd:", "anon_inode",
-                "libsuperhide", "twrp", "busybox"
-            )
-
-            val reader = mapsFile.bufferedReader()
-            var line = reader.readLine()
-            while (line != null) {
-                val lower = line.lowercase()
-                for (pat in suspiciousPatterns) {
-                    if (lower.contains(pat)) {
-                        reader.close()
-                        return true
+            mapsFile.bufferedReader().use { reader ->
+                reader.lineSequence().forEach { line ->
+                    val lower = line.lowercase()
+                    for (pat in SUSPICIOUS_MAP_PATTERNS) {
+                        if (lower.contains(pat)) return true
                     }
                 }
-                line = reader.readLine()
             }
-            reader.close()
             false
         } catch (_: Exception) {
             false
@@ -387,21 +393,17 @@ class RootDetectionModule(private val reactContext: ReactApplicationContext) :
     // ─── Layer 9: Debugger attached check ────────────────────────────────────
 
     private fun checkDebugged(): Boolean {
-        // TracerPid in /proc/self/status: non-zero means a debugger is attached
         return try {
             val statusFile = File("/proc/self/status")
             if (!statusFile.canRead()) return false
-            val reader = statusFile.bufferedReader()
-            var line = reader.readLine()
-            while (line != null) {
-                if (line.startsWith("TracerPid:")) {
-                    val pid = line.substringAfter(":").trim().toIntOrNull() ?: 0
-                    reader.close()
-                    return pid != 0
+            statusFile.bufferedReader().use { reader ->
+                reader.lineSequence().forEach { line ->
+                    if (line.startsWith("TracerPid:")) {
+                        val pid = line.substringAfter(":").trim().toIntOrNull() ?: 0
+                        return pid != 0
+                    }
                 }
-                line = reader.readLine()
             }
-            reader.close()
             false
         } catch (_: Exception) {
             false
@@ -431,18 +433,20 @@ class RootDetectionModule(private val reactContext: ReactApplicationContext) :
             val sigHash = md.digest(signatures[0].toByteArray())
             val sigHex = sigHash.joinToString("") { "%02x".format(it) }
 
-            // TODO: Replace this with your ACTUAL release signing certificate SHA-256
+            // TODO: Replace with your ACTUAL release signing certificate SHA-256.
             // To get it: keytool -printcert -jarfile your_release.apk
-            val EXPECTED_SIGNATURE_SHA256 = "ce10d45f39917bea718e1242140053667d7ef63900ecea7351bd5e4a81cd8218"
+            val EXPECTED_SIGNATURE_SHA256 =
+                "ce10d45f39917bea718e1242140053667d7ef63900ecea7351bd5e4a81cd8218"
 
-            // During development, disable this check or populate the real hash
-            if (EXPECTED_SIGNATURE_SHA256 == "ce10d45f39917bea718e1242140053667d7ef63900ecea7351bd5e4a81cd8218") {
-                return false // Skip in dev until populated
+            // Skip check until the real certificate hash is populated.
+            if (EXPECTED_SIGNATURE_SHA256 ==
+                "ce10d45f39917bea718e1242140053667d7ef63900ecea7351bd5e4a81cd8218") {
+                return false
             }
 
             sigHex != EXPECTED_SIGNATURE_SHA256
         } catch (_: Exception) {
-            false // Don't fail-secure on signature check alone
+            false
         }
     }
 }
