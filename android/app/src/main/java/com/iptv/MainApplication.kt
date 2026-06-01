@@ -9,6 +9,9 @@ import com.facebook.react.ReactNativeApplicationEntryPoint.loadReactNative
 import com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost
 import com.facebook.react.defaults.DefaultReactNativeHost
 
+// Import your root detection package
+import com.iptv.RootDetectionPackage
+
 class MainApplication : Application(), ReactApplication {
 
   override val reactNativeHost: ReactNativeHost =
@@ -19,6 +22,10 @@ class MainApplication : Application(), ReactApplication {
       override fun getPackages() =
         PackageList(this).packages.apply {
           add(OrientationPackage())
+
+          // Add Root Detection Package
+          add(RootDetectionPackage())
+
           // add(MyReactNativePackage())
         }
 
