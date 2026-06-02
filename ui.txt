@@ -3,3 +3,263 @@ here is my iptv app thru react native overview-i want to create a iptv app using
 
 //prottype code-
 
+hey i have a android  react native app made for google tv and android phone, i wanted to add ssl pinning in it .it is a IPTV app which make contact with firebase the backend server via api and also make connection with different streaming urls received from the backend .i uses firebase remoteconfig and firestore in my app i wanted that the ssl certificates for the backend connection should not be harcoded in the app they should be gathered from the remote config as the certificates can be changed in future and also wanted that it should be advanced to intercept the attacks like MITM and detect if in the system MITM apps like http canary, http toolkit ,pcapdroid is installed if installed then tell user to uninstall them and then use  app and it  should also detect the tools like frida or burp suite .here is my app.tsx-   and you can make them native code if required and here is code which retrieves remote config 
+
+```typescript
+// services/remoteConfigService.ts
+
+import remoteConfig from '@react-native-firebase/remote-config';
+import {
+  APP_CONFIG,
+  ERROR_MESSAGES,
+  ERROR_REPORTING,
+  _RC_DEFAULTS,
+} from '../constants/config';
+
+// How long to use cached Remote Config values before re-fetching.
+// Set to 0 during development to always fetch fresh.
+const FETCH_INTERVAL_MS = __DEV__ ? 0 : 60 * 60 * 1000; // 1 hour in prod
+
+/**
+ * Fetches Firebase Remote Config and merges values into the exported
+ * config objects IN PLACE — so all existing imports keep working
+ * without any changes at call sites.
+ *
+ * Falls back silently to hardcoded defaults if Firebase is unreachable.
+ */
+export async function initRemoteConfig(): Promise<void> {
+  try {
+    const rc = remoteConfig();
+
+    // 1. Register our hardcoded values as defaults.
+    //    If Firebase has no value for a key, the default is used.
+    await rc.setDefaults(_RC_DEFAULTS);   andalso how to add ssl certificates in the firebase remote configdashboard
+
+    // 2. Set fetch interval.
+    await rc.setConfigSettings({
+      minimumFetchIntervalMillis: FETCH_INTERVAL_MS,
+    });
+
+    // 3. Fetch + activate. Returns true if new values were activated.
+    const activated = await rc.fetchAndActivate();
+    if (__DEV__) {
+      console.log('[RemoteConfig] fetchAndActivate:', activated ? 'new values' : 'cached/default');
+    }
+
+    // 4. Merge remote values into exported objects in place.
+    //    Object.assign keeps the same reference, so all importers see updates.
+    mergeRemoteKey(rc, 'app_config', APP_CONFIG);
+    mergeRemoteKey(rc, 'error_messages', ERROR_MESSAGES);
+    mergeRemoteKey(rc, 'error_reporting', ERROR_REPORTING);
+
+  } catch (error) {
+    // Non-fatal — app continues with hardcoded defaults.
+    console.warn('[RemoteConfig] Failed to fetch, using defaults:', error);
+  }
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function mergeRemoteKey(
+  rc: ReturnType<typeof remoteConfig>,
+  key: string,
+  target: Record<string, unknown>,
+): void {
+  try {
+    const raw = rc.getValue(key).asString();
+    if (!raw) return;
+
+    const parsed = JSON.parse(raw);
+
+    // Only merge keys that already exist in the target —
+    // prevents Firebase from injecting unknown keys.
+    for (const field of Object.keys(target)) {
+      if (field in parsed) {
+        (target as Record<string, unknown>)[field] = parsed[field];
+      }
+    }
+  } catch (e) {
+    console.warn(`[RemoteConfig] Failed to parse key "${key}":`, e);
+  }
+}
+```   and App.tsx -- import React, { useEffect, useRef, useState } from 'react';
+import {
+  BackHandler,
+  StatusBar,
+  StyleSheet,
+  Text,
+  View,
+  ActivityIndicator,
+} from 'react-native';
+import { RootNavigator } from './src/navigation/RootNavigator';
+import { ChannelProvider } from './src/context/ChannelContext';
+import { SettingsProvider } from './src/context/SettingsContext';
+import { ErrorBoundary } from './src/components/common/ErrorBoundary';
+import { initRemoteConfig } from './src/services/remoteConfigService';
+import { performRootCheck, killApp } from './src/services/rootDetectionService';
+
+if (__DEV__ === false) {
+  ErrorUtils.setGlobalHandler((error, isFatal) => {
+    console.error('[GlobalError]', error?.message, 'fatal:', isFatal);
+  });
+}
+
+type AppState = 'checking' | 'blocked' | 'loading' | 'ready';
+
+// Human-readable labels for each detection reason returned by the native module.
+const REASON_LABELS: Record<string, string> = {
+  ROOT_FILES:          'Root binaries or Magisk files found on device',
+  ROOT_PACKAGES:       'Root management app detected',
+  SU_EXECUTABLE:       'su binary is accessible',
+  BUILD_PROPS:         'System build properties indicate modified OS',
+  WRITABLE_SYSTEM:     'System partition is writable',
+  XPOSED_FRAMEWORK:    'Xposed or Substrate hook framework detected',
+  FRIDA_DETECTED:      'Frida dynamic instrumentation detected',
+  PROC_MAPS_TAMPERING: 'Suspicious library found in process memory',
+  DEBUGGER_ATTACHED:   'Native debugger is attached to the process',
+  SIGNATURE_TAMPERED:  'App signing certificate mismatch',
+  NATIVE_MODULE_MISSING: 'Security module could not be loaded',
+  NATIVE_CHECK_EXCEPTION: 'Security check encountered an unexpected error',
+};
+
+function formatReasons(reasons: string[]): string {
+  if (!reasons.length) return 'Unknown security anomaly detected.';
+  return reasons
+    .map(r => REASON_LABELS[r] ?? r)
+    .join('\n');
+}
+
+export default function App() {
+  const [appState, setAppState] = useState<AppState>('checking');
+  const detectionReasons = useRef<string[]>([]);
+
+  useEffect(() => {
+    if (appState !== 'checking') return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => true);
+    return () => sub.remove();
+  }, [appState]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const bootstrap = async () => {
+      try {
+        const rootResult = await performRootCheck();
+        if (rootResult.rooted) {
+          detectionReasons.current = rootResult.reasons ?? [];
+          if (!mounted) return;
+          setAppState('blocked');
+          setTimeout(() => killApp(), 1500);
+          return;
+        }
+      } catch {
+        detectionReasons.current = ['NATIVE_CHECK_EXCEPTION'];
+        if (!mounted) return;
+        setAppState('blocked');
+        setTimeout(() => killApp(), 1500);
+        return;
+      }
+
+      if (!mounted) return;
+
+      setAppState('loading');
+      try {
+        await initRemoteConfig();
+      } catch {
+        // initRemoteConfig never throws by contract, but guard anyway
+      }
+
+      if (!mounted) return;
+      setAppState('ready');
+    };
+
+    initRemoteConfig().catch(() => {});
+    bootstrap();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  if (appState === 'checking' || appState === 'loading') {
+    return (
+      <View style={styles.loader}>
+        <StatusBar barStyle="light-content" backgroundColor="#000" />
+        <ActivityIndicator size="large" color="#ffffff" />
+      </View>
+    );
+  }
+
+  if (appState === 'blocked') {
+    const reasonText = formatReasons(detectionReasons.current);
+    return (
+      <View style={styles.blocked}>
+        <StatusBar barStyle="light-content" backgroundColor="#0a0a0a" />
+        <Text style={styles.blockedTitle}>Access Denied</Text>
+        <Text style={styles.blockedSubtitle}>
+          This app cannot run on a rooted or tampered device.
+        </Text>
+        <Text style={styles.blockedReasons}>{reasonText}</Text>
+        <Text style={styles.blockedClosing}>The app will now close.</Text>
+      </View>
+    );
+  }
+
+  return (
+    <ErrorBoundary>
+      <SettingsProvider>
+        <ChannelProvider>
+          <StatusBar barStyle="light-content" />
+          <RootNavigator />
+        </ChannelProvider>
+      </SettingsProvider>
+    </ErrorBoundary>
+  );
+}
+
+const styles = StyleSheet.create({
+  loader: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#000000',
+  },
+  blocked: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#0a0a0a',
+    padding: 32,
+  },
+  blockedTitle: {
+    color: '#e53935',
+    fontSize: 22,
+    fontWeight: '600',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  blockedSubtitle: {
+    color: '#aaaaaa',
+    fontSize: 15,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  blockedReasons: {
+    marginTop: 24,
+    color: '#888888',
+    fontSize: 12,
+    textAlign: 'center',
+    lineHeight: 20,
+    fontFamily: 'monospace',
+    borderWidth: 1,
+    borderColor: '#333',
+    borderRadius: 6,
+    padding: 12,
+  },
+  blockedClosing: {
+    marginTop: 20,
+    color: '#e53935',
+    fontSize: 14,
+    textAlign: 'center',
+    fontWeight: '500',
+  },
+});   and the backend url is https://iptv-backend-ds-585a.up.railway.app

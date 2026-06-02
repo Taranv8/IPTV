@@ -57,7 +57,9 @@ android {
 
 dependencies {
     implementation("com.facebook.react:react-android")
-
+// OkHttp is usually already pulled in by React Native,
+    // but pin to a specific version to be safe:
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
     if (hermesEnabled.toBoolean()) {
         implementation("com.facebook.react:hermes-android")
     } else {

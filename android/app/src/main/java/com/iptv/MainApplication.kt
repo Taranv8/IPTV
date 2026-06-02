@@ -25,7 +25,9 @@ class MainApplication : Application(), ReactApplication {
 
           // Add Root Detection Package
           add(RootDetectionPackage())
-
+      
+      add(SslPinningPackage()) 
+      
           // add(MyReactNativePackage())
         }
 

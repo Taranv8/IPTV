@@ -53,7 +53,7 @@ import { VideoErrorBoundary } from './VideoErrorBoundary';
 
 // ─── Timing constants ─────────────────────────────────────────────────────────
 
-const STALL_TIMEOUT_MS     =  8_000;
+const STALL_TIMEOUT_MS     =  20000;
 const RETRY_DELAY_MS       =  2_000;
 const INTER_CYCLE_DELAY_MS =  6_000;
 
@@ -80,12 +80,12 @@ const SKIP_NOW_CODES = new Set([
 // ─── Buffer config (tuned for live TV) ───────────────────────────────────────
 
 const BUFFER_CONFIG = {
-  minBufferMs:                       1_000,
-  maxBufferMs:                       8_000,
-  bufferForPlaybackMs:                 200,
-  bufferForPlaybackAfterRebufferMs:  1_000,
-  backBufferDurationMs:                  0,
-  cacheSizeMb:                           0,
+ minBufferMs: 10000,
+  maxBufferMs: 20000,
+  bufferForPlaybackMs: 2500,
+  bufferForPlaybackAfterRebufferMs: 5000,
+  backBufferDurationMs: 0,
+  cacheSizeMb: 100,
 } as const;
 
 const ACCEPT_HEADER =
@@ -653,7 +653,7 @@ const VideoPlayerInner: React.FC<Props> = ({ channel, fullscreen = false, onFull
             ignoreSilentSwitch="ignore"
             minLoadRetryCount={0}
             automaticallyWaitsToMinimizeStalling={false}
-            reportBandwidth={false}
+            reportBandwidth={true}
             onLoadStart={handleLoadStart}
             onLoad={handleLoad}
             onReadyForDisplay={handleReadyForDisplay}
