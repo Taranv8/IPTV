@@ -11,6 +11,7 @@ import com.facebook.react.defaults.DefaultReactNativeHost
 
 // Import your root detection package
 import com.iptv.RootDetectionPackage
+import com.iptv.sslpinning.SslPinningPackage
 
 class MainApplication : Application(), ReactApplication {
 
