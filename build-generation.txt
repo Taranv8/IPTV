@@ -3,3 +3,5 @@ npx react-native bundle --platform android --dev false --entry-file index.js --b
 
 Get-FileHash .\ota-output\index.android.bundle -Algorithm SHA256
 (Get-Item .\ota-output\index.android.bundle).Length
+
+

@@ -171,13 +171,23 @@ export default function App() {
 
       // ── Step 4: SSL pinning setup ───────────────────────────────────────
       try {
-        const pinResult = await initSslPinning();
-        if (!pinResult.success) {
-          // Pin mismatch / RC delivery failure is non-fatal in this implementation.
-          // Promote to fatal if your threat model requires it:
-          //   setAppState('blocked'); setTimeout(killApp, 1500); return;
-          console.warn('[App] SSL pinning setup failed:', pinResult.error);
-        }
+       const pinResult = await initSslPinning();
+if (!pinResult.success) {
+  if (__DEV__) {
+    console.warn('[App] SSL pinning setup failed:', pinResult.error);
+  } else {
+    // In production, a pin mismatch means active MITM — block the app
+    setBlockedInfo({
+      title: 'Connection Security Error',
+      subtitle: 'A secure connection to our servers could not be verified. This may indicate a network interception attempt.',
+      reasons: pinResult.error ?? 'Certificate pin mismatch',
+      closing: 'The app will now close.',
+    });
+    setAppState('blocked');
+    setTimeout(() => killApp(), 2000);
+    return;
+  }
+}
       } catch {
         console.warn('[App] SSL pinning threw unexpectedly');
       }
@@ -191,6 +201,35 @@ export default function App() {
     return () => { mounted = false; };
   }, []);
 
+  // Add this entire new useEffect after the existing bootstrap useEffect
+useEffect(() => {
+  if (appState !== 'ready') return;
+
+  let pollActive = true;
+
+  const poll = async () => {
+    while (pollActive) {
+await new Promise(resolve =>
+  setTimeout(() => resolve(undefined), 4000)
+);
+      if (!pollActive) break;
+      try {
+        const mitmResult = await detectMitmAndTools();
+        if (mitmResult.detected) {
+          setBlockedInfo(buildMitmBlockedInfo(mitmResult));
+          setAppState('mitm_warning');
+          setTimeout(() => killApp(), 3000);
+          pollActive = false;
+        }
+      } catch {
+        // non-fatal
+      }
+    }
+  };
+
+  poll();
+  return () => { pollActive = false; };
+}, [appState]);
   // ── Render: loading ─────────────────────────────────────────────────────────
   if (appState === 'checking' || appState === 'loading') {
     return (

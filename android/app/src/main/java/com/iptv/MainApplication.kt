@@ -50,6 +50,16 @@ class MainApplication : Application(), ReactApplication {
   }
 
   override fun onCreate() {
+    // Must be before super.onCreate() so RN's network stack picks it up
+val sslPinningModule = com.iptv.sslpinning.SslPinningModule(
+    // We pass a temporary context; the real ReactContext is set later.
+    // The factory only supplies the client — module lifecycle is separate.
+    applicationContext as com.facebook.react.bridge.ReactApplicationContext
+)
+com.facebook.react.modules.network.OkHttpClientProvider
+    .setOkHttpClientFactory(
+        com.iptv.sslpinning.PinnedOkHttpClientFactory(sslPinningModule)
+    )
     super.onCreate()
     loadReactNative(this)
   }

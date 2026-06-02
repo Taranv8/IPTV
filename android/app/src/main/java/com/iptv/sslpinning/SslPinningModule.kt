@@ -102,6 +102,8 @@ class SslPinningModule(private val reactContext: ReactApplicationContext) :
             }
             currentPins = pins
             pinnedClient = buildPinnedClient(pins)
+            // Push the new client into the factory so RN's fetch() uses it too
+PinnedOkHttpClientFactory.updateClient(pinnedClient!!)
             promise.resolve(true)
         } catch (e: Exception) {
             promise.reject("PIN_SETUP_ERROR", e.message, e)
@@ -189,7 +191,6 @@ class SslPinningModule(private val reactContext: ReactApplicationContext) :
             for (port in KNOWN_PROXY_PORTS) {
                 if (isTcpPortOpen("127.0.0.1", port)) {
                     reasons.add("PROXY_PORT_OPEN:$port")
-                    break // one is enough to flag
                 }
             }
 
@@ -213,26 +214,70 @@ class SslPinningModule(private val reactContext: ReactApplicationContext) :
     // Private helpers
     // ─────────────────────────────────────────────────────────────────────────
 
-    private fun buildPinnedClient(pins: Set<String>): OkHttpClient {
-        // Normalise: OkHttp wants "sha256/BASE64==" format
-        val normalisedPins = pins.map { if (it.startsWith("sha256/")) it else "sha256/$it" }
+   private fun buildPinnedClient(pins: Set<String>): OkHttpClient {
+    val normalisedPins = pins.map { if (it.startsWith("sha256/")) it else "sha256/$it" }
 
-        val pinnerBuilder = CertificatePinner.Builder()
-        // We pin against both the backend host and any CDN/streaming host
-        // The JS layer should call validatePin() per host individually,
-        // but we register a broad wildcard so the shared client covers all.
-        for (pin in normalisedPins) {
-            pinnerBuilder.add("*.railway.app", pin)
-            pinnerBuilder.add("iptv-backend-ds-585a.up.railway.app", pin)
-        }
-
-        return OkHttpClient.Builder()
-            .certificatePinner(pinnerBuilder.build())
-            .connectTimeout(15, TimeUnit.SECONDS)
-            .readTimeout(20, TimeUnit.SECONDS)
-            .writeTimeout(20, TimeUnit.SECONDS)
-            .build()
+    val pinnerBuilder = CertificatePinner.Builder()
+    for (pin in normalisedPins) {
+        pinnerBuilder.add("*.railway.app", pin)
+        pinnerBuilder.add("iptv-backend-ds-585a.up.railway.app", pin)
     }
+
+    // Custom TrustManager that additionally validates SPKI hashes
+    val trustManager = buildPinningTrustManager(pins)
+    val sslContext = SSLContext.getInstance("TLS")
+    sslContext.init(null, arrayOf(trustManager), java.security.SecureRandom())
+
+    return OkHttpClient.Builder()
+        .certificatePinner(pinnerBuilder.build())
+        .sslSocketFactory(sslContext.socketFactory, trustManager)
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(20, TimeUnit.SECONDS)
+        .writeTimeout(20, TimeUnit.SECONDS)
+        .build()
+}
+
+private fun buildPinningTrustManager(pins: Set<String>): X509TrustManager {
+    val defaultTm = run {
+        val tmFactory = javax.net.ssl.TrustManagerFactory.getInstance(
+            javax.net.ssl.TrustManagerFactory.getDefaultAlgorithm()
+        )
+        tmFactory.init(null as java.security.KeyStore?)
+        tmFactory.trustManagers.filterIsInstance<X509TrustManager>().first()
+    }
+
+    return object : X509TrustManager {
+        override fun getAcceptedIssuers(): Array<java.security.cert.X509Certificate> =
+            defaultTm.acceptedIssuers
+
+        override fun checkClientTrusted(
+            chain: Array<java.security.cert.X509Certificate>, authType: String
+        ) = defaultTm.checkClientTrusted(chain, authType)
+
+        override fun checkServerTrusted(
+            chain: Array<java.security.cert.X509Certificate>, authType: String
+        ) {
+            defaultTm.checkServerTrusted(chain, authType)
+            // Verify SPKI pin against each cert in chain
+            val digest = MessageDigest.getInstance("SHA-256")
+            val matched = chain.any { cert ->
+                val spki = cert.publicKey.encoded
+                val hash = android.util.Base64.encodeToString(
+                    digest.digest(spki),
+                    android.util.Base64.NO_WRAP
+                )
+                val hashWithPrefix = "sha256/$hash"
+                pins.any { pin ->
+                    val normPin = if (pin.startsWith("sha256/")) pin else "sha256/$pin"
+                    normPin == hashWithPrefix
+                }
+            }
+            if (!matched) {
+                throw SSLPeerUnverifiedException("Certificate pin mismatch — possible MITM")
+            }
+        }
+    }
+}
 
     private fun isPackageInstalled(pm: PackageManager, packageName: String): Boolean {
         return try {

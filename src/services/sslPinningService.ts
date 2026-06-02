@@ -78,11 +78,11 @@ export function formatMitmReasons(reasons: string[]): string {
 
 /** Maps detected package IDs to friendly app names for the user message. */
 const PACKAGE_DISPLAY_NAMES: Record<string, string> = {
-  'com.schiller.httpcanary':    'HTTP Canary',
+  'com.guoshi.httpcanary':    'HTTP Canary',
   'app.greyshirts.sslcapture':  'SSL Capture',
   'com.httptoolkit.android':    'HTTP Toolkit',
   'com.minhui.networkcapture':  'Network Capture',
-  'info.alphasoftware.pcapdroid':'PCAPdroid',
+  'com.emanuelef.remote_capture':'PCAPdroid',
   'pcapdroid.test':             'PCAPdroid (test)',
   'org.sandroproxy.drony':      'Drony',
   'com.ddnstone.proxydroid':    'ProxyDroid',
@@ -151,16 +151,15 @@ export async function initSslPinning(): Promise<SslPinningResult> {
       await SslPinningModule.validatePin(BACKEND_URL);
       if (__DEV__) console.log('[SslPinning] Backend pin validated ✓');
     } catch (e: any) {
-      // PIN_MISMATCH means the cert on the server doesn't match the RC pins.
-      // This can mean:
-      //   a) Server cert was rotated and RC hasn't been updated yet → soft fail
-      //   b) Active MITM is replacing the cert → hard fail
-      // We treat it as a hard failure and let the caller decide.
-      return {
-        success: false,
-        error: `Pin validation failed for ${BACKEND_URL}: ${e?.message ?? e}`,
-      };
-    }
+  // Re-throw PIN_MISMATCH as fatal; other errors are soft failures
+  if (e?.code === 'PIN_MISMATCH') {
+    throw e; // App.tsx bootstrap will catch and block
+  }
+  return {
+    success: false,
+    error: `Pin validation failed for ${BACKEND_URL}: ${e?.message ?? e}`,
+  };
+}
 
     return { success: true };
   } catch (e: any) {
