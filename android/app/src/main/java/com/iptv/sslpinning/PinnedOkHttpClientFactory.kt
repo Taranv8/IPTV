@@ -14,9 +14,21 @@ class PinnedOkHttpClientFactory : OkHttpClientFactory {
         @Volatile
         private var activeClient: OkHttpClient? = null
 
-        fun updateClient(client: OkHttpClient) {
-            activeClient = client
-        }
+      fun updateClient(pinnedClient: OkHttpClient) {
+    // Re-wrap the pinned client on RN's base builder so CookieJarContainer
+    // is preserved. SslPinningModule builds with plain OkHttpClient.Builder()
+    // intentionally — the RN wrapping happens here and only here.
+    activeClient = OkHttpClientProvider.createClientBuilder()
+        .sslSocketFactory(
+            pinnedClient.sslSocketFactory,
+            pinnedClient.x509TrustManager!!
+        )
+        .certificatePinner(pinnedClient.certificatePinner)
+        .connectTimeout(pinnedClient.connectTimeoutMillis.toLong(), TimeUnit.MILLISECONDS)
+        .readTimeout(pinnedClient.readTimeoutMillis.toLong(), TimeUnit.MILLISECONDS)
+        .writeTimeout(pinnedClient.writeTimeoutMillis.toLong(), TimeUnit.MILLISECONDS)
+        .build()
+}
 
         private val FIREBASE_ALLOWED_SUFFIXES = listOf(
             "firebaseremoteconfig.googleapis.com",

@@ -66,11 +66,15 @@ src
 │   │   ├── ErrorLogger.ts
 │   │   └── ErrorReporter.ts
 │   ├── OTAUpdateService.ts
+│   ├── remoteConfigService.ts
+│   ├── rootDetectionService.ts
+│   ├── sslPinningService.ts
 │   ├── storage
 │   │   ├── AsyncStorageService.ts
 │   │   ├── CacheService.ts
 │   │   └── PreferencesService.ts
 │   └── stream
+│       ├── StreamHealthService.ts
 │       └── StreamResolver.ts
 ├── types
 │   ├── channel.ts
@@ -80,4 +84,5 @@ src
     ├── channelUtils.ts
     ├── formatters.ts
     ├── helpers.ts
+    ├── OrientationHelper.ts
     └── validators.ts

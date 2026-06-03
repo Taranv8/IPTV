@@ -1,0 +1,1892 @@
+src
+├── .gradle
+│   ├── 9.0.0
+│   │   ├── checksums
+│   │   │   ├── checksums.lock
+│   │   │   ├── md5-checksums.bin
+│   │   │   └── sha1-checksums.bin
+│   │   ├── executionHistory
+│   │   │   ├── executionHistory.bin
+│   │   │   └── executionHistory.lock
+│   │   ├── expanded
+│   │   ├── fileChanges
+│   │   │   └── last-build.bin
+│   │   ├── fileHashes
+│   │   │   ├── fileHashes.bin
+│   │   │   ├── fileHashes.lock
+│   │   │   └── resourceHashesCache.bin
+│   │   ├── gc.properties
+│   │   └── vcsMetadata
+│   ├── buildOutputCleanup
+│   │   ├── buildOutputCleanup.lock
+│   │   ├── cache.properties
+│   │   └── outputFiles.bin
+│   ├── file-system.probe
+│   ├── noVersion
+│   │   └── buildLogic.lock
+│   └── vcs-1
+│       └── gc.properties
+├── .kotlin
+│   └── sessions
+├── app
+│   ├── .cxx
+│   │   ├── Debug
+│   │   │   └── 463y5y7e
+│   │   │       ├── arm64-v8a
+│   │   │       │   ├── .cmake
+│   │   │       │   │   └── api
+│   │   │       │   │       └── v1
+│   │   │       │   │           ├── query
+│   │   │       │   │           │   └── client-agp
+│   │   │       │   │           │       ├── cache-v2
+│   │   │       │   │           │       ├── cmakeFiles-v1
+│   │   │       │   │           │       └── codemodel-v2
+│   │   │       │   │           └── reply
+│   │   │       │   │               ├── cache-v2-0b451883ee568d1705dc.json
+│   │   │       │   │               ├── cmakeFiles-v1-dcad575ee8c533e2268a.json
+│   │   │       │   │               ├── codemodel-v2-c3f6a4c8c890d62fdf08.json
+│   │   │       │   │               ├── directory-.-Debug-d0094a50bb2071803777.json
+│   │   │       │   │               ├── directory-rnasyncstorage_autolinked_build-Debug-58328846ba717e863369.json
+│   │   │       │   │               ├── directory-rngesturehandler_codegen_autolinked_build-Debug-99e689f760d6838b0bec.json
+│   │   │       │   │               ├── directory-rnpicker_autolinked_build-Debug-58cbe6a257ca2a029674.json
+│   │   │       │   │               ├── directory-rnreanimated_autolinked_build-Debug-50401b34d98f47662d3e.json
+│   │   │       │   │               ├── directory-rnscreens_autolinked_build-Debug-cb6d49c3deda956e7f64.json
+│   │   │       │   │               ├── directory-RNVectorIconsSpec_autolinked_build-Debug-30f11296a6da6db01e5c.json
+│   │   │       │   │               ├── directory-rnworklets_autolinked_build-Debug-f54b84d9f5741d0b94c7.json
+│   │   │       │   │               ├── directory-safeareacontext_autolinked_build-Debug-4811c947b888d4f098d4.json
+│   │   │       │   │               ├── index-2026-02-28T21-29-57-0612.json
+│   │   │       │   │               ├── target-appmodules-Debug-0e3dd96cd47f290b3277.json
+│   │   │       │   │               ├── target-react_codegen_rnasyncstorage-Debug-3bb445bf8e8f0c63c33f.json
+│   │   │       │   │               ├── target-react_codegen_rngesturehandler_codegen-Debug-ea0b2e33f62fd946a780.json
+│   │   │       │   │               ├── target-react_codegen_rnpicker-Debug-4ccfd368154ff463db6f.json
+│   │   │       │   │               ├── target-react_codegen_rnreanimated-Debug-6389087b07a1034bd813.json
+│   │   │       │   │               ├── target-react_codegen_rnscreens-Debug-401b254558fd67bdcadb.json
+│   │   │       │   │               ├── target-react_codegen_RNVectorIconsSpec-Debug-129dc731ef37a4eaec9a.json
+│   │   │       │   │               ├── target-react_codegen_rnworklets-Debug-6e287f5e4b2390e9d10d.json
+│   │   │       │   │               └── target-react_codegen_safeareacontext-Debug-6504987907a57b58e9fb.json
+│   │   │       │   ├── .ninja_deps
+│   │   │       │   ├── .ninja_log
+│   │   │       │   ├── additional_project_files.txt
+│   │   │       │   ├── android_gradle_build.json
+│   │   │       │   ├── android_gradle_build_mini.json
+│   │   │       │   ├── build.ninja
+│   │   │       │   ├── build_file_index.txt
+│   │   │       │   ├── CMakeCache.txt
+│   │   │       │   ├── CMakeFiles
+│   │   │       │   │   ├── 3.22.1-g37088a8-dirty
+│   │   │       │   │   │   ├── CMakeCCompiler.cmake
+│   │   │       │   │   │   ├── CMakeCXXCompiler.cmake
+│   │   │       │   │   │   ├── CMakeDetermineCompilerABI_C.bin
+│   │   │       │   │   │   ├── CMakeDetermineCompilerABI_CXX.bin
+│   │   │       │   │   │   ├── CMakeSystem.cmake
+│   │   │       │   │   │   ├── CompilerIdC
+│   │   │       │   │   │   │   ├── CMakeCCompilerId.c
+│   │   │       │   │   │   │   ├── CMakeCCompilerId.o
+│   │   │       │   │   │   │   └── tmp
+│   │   │       │   │   │   └── CompilerIdCXX
+│   │   │       │   │   │       ├── CMakeCXXCompilerId.cpp
+│   │   │       │   │   │       ├── CMakeCXXCompilerId.o
+│   │   │       │   │   │       └── tmp
+│   │   │       │   │   ├── appmodules.dir
+│   │   │       │   │   │   └── C_
+│   │   │       │   │   │       └── Users
+│   │   │       │   │   │           └── Taran
+│   │   │       │   │   │               └── Desktop
+│   │   │       │   │   │                   └── iptv
+│   │   │       │   │   │                       └── IPTV
+│   │   │       │   │   │                           └── android
+│   │   │       │   │   │                               └── app
+│   │   │       │   │   │                                   └── build
+│   │   │       │   │   │                                       └── generated
+│   │   │       │   │   │                                           └── autolinking
+│   │   │       │   │   │                                               └── src
+│   │   │       │   │   │                                                   └── main
+│   │   │       │   │   │                                                       └── jni
+│   │   │       │   │   ├── cmake.check_cache
+│   │   │       │   │   ├── cmake.verify_globs
+│   │   │       │   │   ├── CMakeError.log
+│   │   │       │   │   ├── CMakeOutput.log
+│   │   │       │   │   ├── CMakeTmp
+│   │   │       │   │   ├── rules.ninja
+│   │   │       │   │   ├── TargetDirectories.txt
+│   │   │       │   │   ├── VerifyGlobs.cmake
+│   │   │       │   │   └── _CMakeLTOTest-CXX
+│   │   │       │   │       ├── bin
+│   │   │       │   │       │   ├── .ninja_deps
+│   │   │       │   │       │   ├── .ninja_log
+│   │   │       │   │       │   ├── build.ninja
+│   │   │       │   │       │   ├── CMakeCache.txt
+│   │   │       │   │       │   ├── CMakeFiles
+│   │   │       │   │       │   │   ├── boo.dir
+│   │   │       │   │       │   │   │   └── main.cpp.o
+│   │   │       │   │       │   │   ├── cmake.check_cache
+│   │   │       │   │       │   │   ├── foo.dir
+│   │   │       │   │       │   │   │   └── foo.cpp.o
+│   │   │       │   │       │   │   ├── rules.ninja
+│   │   │       │   │       │   │   └── TargetDirectories.txt
+│   │   │       │   │       │   ├── cmake_install.cmake
+│   │   │       │   │       │   └── libfoo.a
+│   │   │       │   │       └── src
+│   │   │       │   │           ├── CMakeLists.txt
+│   │   │       │   │           ├── foo.cpp
+│   │   │       │   │           └── main.cpp
+│   │   │       │   ├── cmake_install.cmake
+│   │   │       │   ├── compile_commands.json
+│   │   │       │   ├── compile_commands.json.bin
+│   │   │       │   ├── configure_fingerprint.bin
+│   │   │       │   ├── metadata_generation_command.txt
+│   │   │       │   ├── prefab_config.json
+│   │   │       │   ├── rnasyncstorage_autolinked_build
+│   │   │       │   │   ├── CMakeFiles
+│   │   │       │   │   │   └── react_codegen_rnasyncstorage.dir
+│   │   │       │   │   │       └── react
+│   │   │       │   │   │           └── renderer
+│   │   │       │   │   │               └── components
+│   │   │       │   │   │                   └── rnasyncstorage
+│   │   │       │   │   └── cmake_install.cmake
+│   │   │       │   ├── rngesturehandler_codegen_autolinked_build
+│   │   │       │   │   ├── CMakeFiles
+│   │   │       │   │   │   └── react_codegen_rngesturehandler_codegen.dir
+│   │   │       │   │   │       └── react
+│   │   │       │   │   │           └── renderer
+│   │   │       │   │   │               └── components
+│   │   │       │   │   │                   └── rngesturehandler_codegen
+│   │   │       │   │   └── cmake_install.cmake
+│   │   │       │   ├── rnpicker_autolinked_build
+│   │   │       │   │   ├── CMakeFiles
+│   │   │       │   │   │   └── react_codegen_rnpicker.dir
+│   │   │       │   │   │       ├── 3719b35259839848e29a3752d58d4986
+│   │   │       │   │   │       │   └── source
+│   │   │       │   │   │       │       └── codegen
+│   │   │       │   │   │       │           └── jni
+│   │   │       │   │   │       │               └── react
+│   │   │       │   │   │       │                   └── renderer
+│   │   │       │   │   │       │                       └── components
+│   │   │       │   │   │       │                           └── rnpicker
+│   │   │       │   │   │       ├── 7954a242caa4dcfeea77f78c938f578d
+│   │   │       │   │   │       │   └── generated
+│   │   │       │   │   │       │       └── source
+│   │   │       │   │   │       │           └── codegen
+│   │   │       │   │   │       │               └── jni
+│   │   │       │   │   │       │                   └── react
+│   │   │       │   │   │       │                       └── renderer
+│   │   │       │   │   │       │                           └── components
+│   │   │       │   │   │       │                               └── rnpicker
+│   │   │       │   │   │       └── 8075503abddc4f3d0acdc00ce280ebed
+│   │   │       │   │   │           └── codegen
+│   │   │       │   │   │               └── jni
+│   │   │       │   │   │                   └── react
+│   │   │       │   │   │                       └── renderer
+│   │   │       │   │   │                           └── components
+│   │   │       │   │   │                               └── rnpicker
+│   │   │       │   │   └── cmake_install.cmake
+│   │   │       │   ├── rnreanimated_autolinked_build
+│   │   │       │   │   ├── CMakeFiles
+│   │   │       │   │   │   └── react_codegen_rnreanimated.dir
+│   │   │       │   │   │       └── react
+│   │   │       │   │   │           └── renderer
+│   │   │       │   │   │               └── components
+│   │   │       │   │   │                   └── rnreanimated
+│   │   │       │   │   └── cmake_install.cmake
+│   │   │       │   ├── rnscreens_autolinked_build
+│   │   │       │   │   ├── CMakeFiles
+│   │   │       │   │   │   └── react_codegen_rnscreens.dir
+│   │   │       │   │   │       ├── 135adcf1bb05802ceedee0c07f9c9fab
+│   │   │       │   │   │       │   └── cpp
+│   │   │       │   │   │       │       └── react
+│   │   │       │   │   │       │           └── renderer
+│   │   │       │   │   │       │               └── components
+│   │   │       │   │   │       │                   └── rnscreens
+│   │   │       │   │   │       ├── 1c0fd513a005ef4fe59fff6f1fcced31
+│   │   │       │   │   │       │   └── react
+│   │   │       │   │   │       │       └── renderer
+│   │   │       │   │   │       │           └── components
+│   │   │       │   │   │       │               └── rnscreens
+│   │   │       │   │   │       ├── 2ea113f299d272051e33647e984403ab
+│   │   │       │   │   │       │   └── codegen
+│   │   │       │   │   │       │       └── jni
+│   │   │       │   │   │       │           └── react
+│   │   │       │   │   │       │               └── renderer
+│   │   │       │   │   │       │                   └── components
+│   │   │       │   │   │       │                       └── rnscreens
+│   │   │       │   │   │       ├── 50927e56d988cbbc5e3b28c54b2f4cee
+│   │   │       │   │   │       │   └── renderer
+│   │   │       │   │   │       │       └── components
+│   │   │       │   │   │       │           └── rnscreens
+│   │   │       │   │   │       ├── 747fff95c79079c32d8b0371722b81b4
+│   │   │       │   │   │       │   └── common
+│   │   │       │   │   │       │       └── cpp
+│   │   │       │   │   │       │           └── react
+│   │   │       │   │   │       │               └── renderer
+│   │   │       │   │   │       │                   └── components
+│   │   │       │   │   │       │                       └── rnscreens
+│   │   │       │   │   │       └── 7999889ad12fd3fd629b69706a6f1a0d
+│   │   │       │   │   │           └── source
+│   │   │       │   │   │               └── codegen
+│   │   │       │   │   │                   └── jni
+│   │   │       │   │   │                       └── react
+│   │   │       │   │   │                           └── renderer
+│   │   │       │   │   │                               └── components
+│   │   │       │   │   │                                   └── rnscreens
+│   │   │       │   │   └── cmake_install.cmake
+│   │   │       │   ├── RNVectorIconsSpec_autolinked_build
+│   │   │       │   │   ├── CMakeFiles
+│   │   │       │   │   │   └── react_codegen_RNVectorIconsSpec.dir
+│   │   │       │   │   │       └── react
+│   │   │       │   │   │           └── renderer
+│   │   │       │   │   │               └── components
+│   │   │       │   │   │                   └── RNVectorIconsSpec
+│   │   │       │   │   └── cmake_install.cmake
+│   │   │       │   ├── rnworklets_autolinked_build
+│   │   │       │   │   ├── CMakeFiles
+│   │   │       │   │   │   └── react_codegen_rnworklets.dir
+│   │   │       │   │   │       └── react
+│   │   │       │   │   │           └── renderer
+│   │   │       │   │   │               └── components
+│   │   │       │   │   │                   └── rnworklets
+│   │   │       │   │   └── cmake_install.cmake
+│   │   │       │   ├── safeareacontext_autolinked_build
+│   │   │       │   │   ├── CMakeFiles
+│   │   │       │   │   │   └── react_codegen_safeareacontext.dir
+│   │   │       │   │   │       ├── 17fac1fc51143b34ebe8b493f3ce207a
+│   │   │       │   │   │       │   └── react
+│   │   │       │   │   │       │       └── renderer
+│   │   │       │   │   │       │           └── components
+│   │   │       │   │   │       │               └── safeareacontext
+│   │   │       │   │   │       ├── 381f96dad4500b81b89659f8f918c33a
+│   │   │       │   │   │       │   └── jni
+│   │   │       │   │   │       │       └── react
+│   │   │       │   │   │       │           └── renderer
+│   │   │       │   │   │       │               └── components
+│   │   │       │   │   │       │                   └── safeareacontext
+│   │   │       │   │   │       ├── 557431ef61ee6268ce4ced41cc38dfe8
+│   │   │       │   │   │       │   └── components
+│   │   │       │   │   │       │       └── safeareacontext
+│   │   │       │   │   │       ├── 832aef0c00a9b2de1bea4df3239fff77
+│   │   │       │   │   │       │   └── renderer
+│   │   │       │   │   │       │       └── components
+│   │   │       │   │   │       │           └── safeareacontext
+│   │   │       │   │   │       ├── 86f3cf4b328a8c8402e48d70db43b48e
+│   │   │       │   │   │       │   └── generated
+│   │   │       │   │   │       │       └── source
+│   │   │       │   │   │       │           └── codegen
+│   │   │       │   │   │       │               └── jni
+│   │   │       │   │   │       └── c981267d766f078fe415e3c90bb31d38
+│   │   │       │   │   │           └── renderer
+│   │   │       │   │   │               └── components
+│   │   │       │   │   │                   └── safeareacontext
+│   │   │       │   │   └── cmake_install.cmake
+│   │   │       │   └── symbol_folder_index.txt
+│   │   │       ├── armeabi-v7a
+│   │   │       │   ├── .cmake
+│   │   │       │   │   └── api
+│   │   │       │   │       └── v1
+│   │   │       │   │           ├── query
+│   │   │       │   │           │   └── client-agp
+│   │   │       │   │           │       ├── cache-v2
+│   │   │       │   │           │       ├── cmakeFiles-v1
+│   │   │       │   │           │       └── codemodel-v2
+│   │   │       │   │           └── reply
+│   │   │       │   │               ├── cache-v2-8853bd86a8aa07b8e352.json
+│   │   │       │   │               ├── cmakeFiles-v1-d4aefe3122e519b563c2.json
+│   │   │       │   │               ├── codemodel-v2-b5b23ce4ad37ff93729f.json
+│   │   │       │   │               ├── directory-.-Debug-d0094a50bb2071803777.json
+│   │   │       │   │               ├── directory-rnasyncstorage_autolinked_build-Debug-58328846ba717e863369.json
+│   │   │       │   │               ├── directory-rngesturehandler_codegen_autolinked_build-Debug-99e689f760d6838b0bec.json
+│   │   │       │   │               ├── directory-rnpicker_autolinked_build-Debug-58cbe6a257ca2a029674.json
+│   │   │       │   │               ├── directory-rnreanimated_autolinked_build-Debug-50401b34d98f47662d3e.json
+│   │   │       │   │               ├── directory-rnscreens_autolinked_build-Debug-cb6d49c3deda956e7f64.json
+│   │   │       │   │               ├── directory-RNVectorIconsSpec_autolinked_build-Debug-30f11296a6da6db01e5c.json
+│   │   │       │   │               ├── directory-rnworklets_autolinked_build-Debug-f54b84d9f5741d0b94c7.json
+│   │   │       │   │               ├── directory-safeareacontext_autolinked_build-Debug-4811c947b888d4f098d4.json
+│   │   │       │   │               ├── index-2026-02-28T21-30-11-0929.json
+│   │   │       │   │               ├── target-appmodules-Debug-0da7ac1937ea5154eff3.json
+│   │   │       │   │               ├── target-react_codegen_rnasyncstorage-Debug-d83e7944404090716dba.json
+│   │   │       │   │               ├── target-react_codegen_rngesturehandler_codegen-Debug-38d712cbe07f00495cb4.json
+│   │   │       │   │               ├── target-react_codegen_rnpicker-Debug-b7af9c78fe019982e4f2.json
+│   │   │       │   │               ├── target-react_codegen_rnreanimated-Debug-81454138930795c16afd.json
+│   │   │       │   │               ├── target-react_codegen_rnscreens-Debug-671ce03c62715e087139.json
+│   │   │       │   │               ├── target-react_codegen_RNVectorIconsSpec-Debug-9d74b1729f5e64bb5a51.json
+│   │   │       │   │               ├── target-react_codegen_rnworklets-Debug-46a9726e1e4eaf375a85.json
+│   │   │       │   │               └── target-react_codegen_safeareacontext-Debug-edd55d122a258375178e.json
+│   │   │       │   ├── .ninja_deps
+│   │   │       │   ├── .ninja_log
+│   │   │       │   ├── additional_project_files.txt
+│   │   │       │   ├── android_gradle_build.json
+│   │   │       │   ├── android_gradle_build_mini.json
+│   │   │       │   ├── build.ninja
+│   │   │       │   ├── build_file_index.txt
+│   │   │       │   ├── CMakeCache.txt
+│   │   │       │   ├── CMakeFiles
+│   │   │       │   │   ├── 3.22.1-g37088a8-dirty
+│   │   │       │   │   │   ├── CMakeCCompiler.cmake
+│   │   │       │   │   │   ├── CMakeCXXCompiler.cmake
+│   │   │       │   │   │   ├── CMakeDetermineCompilerABI_C.bin
+│   │   │       │   │   │   ├── CMakeDetermineCompilerABI_CXX.bin
+│   │   │       │   │   │   ├── CMakeSystem.cmake
+│   │   │       │   │   │   ├── CompilerIdC
+│   │   │       │   │   │   │   ├── CMakeCCompilerId.c
+│   │   │       │   │   │   │   ├── CMakeCCompilerId.o
+│   │   │       │   │   │   │   └── tmp
+│   │   │       │   │   │   └── CompilerIdCXX
+│   │   │       │   │   │       ├── CMakeCXXCompilerId.cpp
+│   │   │       │   │   │       ├── CMakeCXXCompilerId.o
+│   │   │       │   │   │       └── tmp
+│   │   │       │   │   ├── appmodules.dir
+│   │   │       │   │   │   └── C_
+│   │   │       │   │   │       └── Users
+│   │   │       │   │   │           └── Taran
+│   │   │       │   │   │               └── Desktop
+│   │   │       │   │   │                   └── iptv
+│   │   │       │   │   │                       └── IPTV
+│   │   │       │   │   │                           └── android
+│   │   │       │   │   │                               └── app
+│   │   │       │   │   │                                   └── build
+│   │   │       │   │   │                                       └── generated
+│   │   │       │   │   │                                           └── autolinking
+│   │   │       │   │   │                                               └── src
+│   │   │       │   │   │                                                   └── main
+│   │   │       │   │   │                                                       └── jni
+│   │   │       │   │   ├── cmake.check_cache
+│   │   │       │   │   ├── cmake.verify_globs
+│   │   │       │   │   ├── CMakeError.log
+│   │   │       │   │   ├── CMakeOutput.log
+│   │   │       │   │   ├── CMakeTmp
+│   │   │       │   │   ├── rules.ninja
+│   │   │       │   │   ├── TargetDirectories.txt
+│   │   │       │   │   ├── VerifyGlobs.cmake
+│   │   │       │   │   └── _CMakeLTOTest-CXX
+│   │   │       │   │       ├── bin
+│   │   │       │   │       │   ├── .ninja_deps
+│   │   │       │   │       │   ├── .ninja_log
+│   │   │       │   │       │   ├── build.ninja
+│   │   │       │   │       │   ├── CMakeCache.txt
+│   │   │       │   │       │   ├── CMakeFiles
+│   │   │       │   │       │   │   ├── boo.dir
+│   │   │       │   │       │   │   │   └── main.cpp.o
+│   │   │       │   │       │   │   ├── cmake.check_cache
+│   │   │       │   │       │   │   ├── foo.dir
+│   │   │       │   │       │   │   │   └── foo.cpp.o
+│   │   │       │   │       │   │   ├── rules.ninja
+│   │   │       │   │       │   │   └── TargetDirectories.txt
+│   │   │       │   │       │   ├── cmake_install.cmake
+│   │   │       │   │       │   └── libfoo.a
+│   │   │       │   │       └── src
+│   │   │       │   │           ├── CMakeLists.txt
+│   │   │       │   │           ├── foo.cpp
+│   │   │       │   │           └── main.cpp
+│   │   │       │   ├── cmake_install.cmake
+│   │   │       │   ├── compile_commands.json
+│   │   │       │   ├── compile_commands.json.bin
+│   │   │       │   ├── configure_fingerprint.bin
+│   │   │       │   ├── metadata_generation_command.txt
+│   │   │       │   ├── prefab_config.json
+│   │   │       │   ├── rnasyncstorage_autolinked_build
+│   │   │       │   │   ├── CMakeFiles
+│   │   │       │   │   │   └── react_codegen_rnasyncstorage.dir
+│   │   │       │   │   │       └── react
+│   │   │       │   │   │           └── renderer
+│   │   │       │   │   │               └── components
+│   │   │       │   │   │                   └── rnasyncstorage
+│   │   │       │   │   └── cmake_install.cmake
+│   │   │       │   ├── rngesturehandler_codegen_autolinked_build
+│   │   │       │   │   ├── CMakeFiles
+│   │   │       │   │   │   └── react_codegen_rngesturehandler_codegen.dir
+│   │   │       │   │   │       ├── bac033cd950586cef66695376748dd33
+│   │   │       │   │   │       └── react
+│   │   │       │   │   │           └── renderer
+│   │   │       │   │   │               └── components
+│   │   │       │   │   │                   └── rngesturehandler_codegen
+│   │   │       │   │   └── cmake_install.cmake
+│   │   │       │   ├── rnpicker_autolinked_build
+│   │   │       │   │   ├── CMakeFiles
+│   │   │       │   │   │   └── react_codegen_rnpicker.dir
+│   │   │       │   │   │       ├── 3719b35259839848e29a3752d58d4986
+│   │   │       │   │   │       │   └── source
+│   │   │       │   │   │       │       └── codegen
+│   │   │       │   │   │       │           └── jni
+│   │   │       │   │   │       │               └── react
+│   │   │       │   │   │       │                   └── renderer
+│   │   │       │   │   │       │                       └── components
+│   │   │       │   │   │       │                           └── rnpicker
+│   │   │       │   │   │       └── 8075503abddc4f3d0acdc00ce280ebed
+│   │   │       │   │   │           └── codegen
+│   │   │       │   │   │               └── jni
+│   │   │       │   │   │                   └── react
+│   │   │       │   │   │                       └── renderer
+│   │   │       │   │   │                           └── components
+│   │   │       │   │   │                               └── rnpicker
+│   │   │       │   │   └── cmake_install.cmake
+│   │   │       │   ├── rnreanimated_autolinked_build
+│   │   │       │   │   ├── CMakeFiles
+│   │   │       │   │   │   └── react_codegen_rnreanimated.dir
+│   │   │       │   │   │       └── react
+│   │   │       │   │   │           └── renderer
+│   │   │       │   │   │               └── components
+│   │   │       │   │   │                   └── rnreanimated
+│   │   │       │   │   └── cmake_install.cmake
+│   │   │       │   ├── rnscreens_autolinked_build
+│   │   │       │   │   ├── CMakeFiles
+│   │   │       │   │   │   └── react_codegen_rnscreens.dir
+│   │   │       │   │   │       ├── 0ae6747bdc712fd80332af2f3b7e77d7
+│   │   │       │   │   │       │   └── jni
+│   │   │       │   │   │       │       └── react
+│   │   │       │   │   │       │           └── renderer
+│   │   │       │   │   │       │               └── components
+│   │   │       │   │   │       │                   └── rnscreens
+│   │   │       │   │   │       ├── 135adcf1bb05802ceedee0c07f9c9fab
+│   │   │       │   │   │       │   └── cpp
+│   │   │       │   │   │       │       └── react
+│   │   │       │   │   │       │           └── renderer
+│   │   │       │   │   │       │               └── components
+│   │   │       │   │   │       │                   └── rnscreens
+│   │   │       │   │   │       ├── 1c0fd513a005ef4fe59fff6f1fcced31
+│   │   │       │   │   │       │   └── react
+│   │   │       │   │   │       │       └── renderer
+│   │   │       │   │   │       │           └── components
+│   │   │       │   │   │       │               └── rnscreens
+│   │   │       │   │   │       ├── 2ea113f299d272051e33647e984403ab
+│   │   │       │   │   │       │   └── codegen
+│   │   │       │   │   │       │       └── jni
+│   │   │       │   │   │       │           └── react
+│   │   │       │   │   │       │               └── renderer
+│   │   │       │   │   │       │                   └── components
+│   │   │       │   │   │       │                       └── rnscreens
+│   │   │       │   │   │       ├── 50927e56d988cbbc5e3b28c54b2f4cee
+│   │   │       │   │   │       │   └── renderer
+│   │   │       │   │   │       │       └── components
+│   │   │       │   │   │       │           └── rnscreens
+│   │   │       │   │   │       ├── 747fff95c79079c32d8b0371722b81b4
+│   │   │       │   │   │       │   └── common
+│   │   │       │   │   │       │       └── cpp
+│   │   │       │   │   │       │           └── react
+│   │   │       │   │   │       │               └── renderer
+│   │   │       │   │   │       │                   └── components
+│   │   │       │   │   │       │                       └── rnscreens
+│   │   │       │   │   │       ├── 7999889ad12fd3fd629b69706a6f1a0d
+│   │   │       │   │   │       │   └── source
+│   │   │       │   │   │       │       └── codegen
+│   │   │       │   │   │       │           └── jni
+│   │   │       │   │   │       │               └── react
+│   │   │       │   │   │       │                   └── renderer
+│   │   │       │   │   │       │                       └── components
+│   │   │       │   │   │       │                           └── rnscreens
+│   │   │       │   │   │       └── 85fa1e17ddf913c6285c85a51556303c
+│   │   │       │   │   │           └── components
+│   │   │       │   │   │               └── rnscreens
+│   │   │       │   │   └── cmake_install.cmake
+│   │   │       │   ├── RNVectorIconsSpec_autolinked_build
+│   │   │       │   │   ├── CMakeFiles
+│   │   │       │   │   │   └── react_codegen_RNVectorIconsSpec.dir
+│   │   │       │   │   │       └── react
+│   │   │       │   │   │           └── renderer
+│   │   │       │   │   │               └── components
+│   │   │       │   │   │                   └── RNVectorIconsSpec
+│   │   │       │   │   └── cmake_install.cmake
+│   │   │       │   ├── rnworklets_autolinked_build
+│   │   │       │   │   ├── CMakeFiles
+│   │   │       │   │   │   └── react_codegen_rnworklets.dir
+│   │   │       │   │   │       └── react
+│   │   │       │   │   │           └── renderer
+│   │   │       │   │   │               └── components
+│   │   │       │   │   │                   └── rnworklets
+│   │   │       │   │   └── cmake_install.cmake
+│   │   │       │   ├── safeareacontext_autolinked_build
+│   │   │       │   │   ├── CMakeFiles
+│   │   │       │   │   │   └── react_codegen_safeareacontext.dir
+│   │   │       │   │   │       ├── 17fac1fc51143b34ebe8b493f3ce207a
+│   │   │       │   │   │       │   └── react
+│   │   │       │   │   │       │       └── renderer
+│   │   │       │   │   │       │           └── components
+│   │   │       │   │   │       │               └── safeareacontext
+│   │   │       │   │   │       ├── 381f96dad4500b81b89659f8f918c33a
+│   │   │       │   │   │       │   └── jni
+│   │   │       │   │   │       │       └── react
+│   │   │       │   │   │       │           └── renderer
+│   │   │       │   │   │       │               └── components
+│   │   │       │   │   │       │                   └── safeareacontext
+│   │   │       │   │   │       ├── 557431ef61ee6268ce4ced41cc38dfe8
+│   │   │       │   │   │       │   └── components
+│   │   │       │   │   │       │       └── safeareacontext
+│   │   │       │   │   │       ├── 86f3cf4b328a8c8402e48d70db43b48e
+│   │   │       │   │   │       │   └── generated
+│   │   │       │   │   │       │       └── source
+│   │   │       │   │   │       │           └── codegen
+│   │   │       │   │   │       │               └── jni
+│   │   │       │   │   │       ├── 8f3baf186a3ac72ff9cafe256e68e991
+│   │   │       │   │   │       │   └── components
+│   │   │       │   │   │       │       └── safeareacontext
+│   │   │       │   │   │       └── c981267d766f078fe415e3c90bb31d38
+│   │   │       │   │   │           └── renderer
+│   │   │       │   │   │               └── components
+│   │   │       │   │   │                   └── safeareacontext
+│   │   │       │   │   └── cmake_install.cmake
+│   │   │       │   └── symbol_folder_index.txt
+│   │   │       ├── hash_key.txt
+│   │   │       ├── prefab
+│   │   │       │   ├── arm64-v8a
+│   │   │       │   │   └── prefab
+│   │   │       │   │       └── lib
+│   │   │       │   │           └── aarch64-linux-android
+│   │   │       │   │               └── cmake
+│   │   │       │   │                   ├── fbjni
+│   │   │       │   │                   │   ├── fbjniConfig.cmake
+│   │   │       │   │                   │   └── fbjniConfigVersion.cmake
+│   │   │       │   │                   ├── hermes-engine
+│   │   │       │   │                   │   ├── hermes-engineConfig.cmake
+│   │   │       │   │                   │   └── hermes-engineConfigVersion.cmake
+│   │   │       │   │                   ├── react-native-reanimated
+│   │   │       │   │                   │   ├── react-native-reanimatedConfig.cmake
+│   │   │       │   │                   │   └── react-native-reanimatedConfigVersion.cmake
+│   │   │       │   │                   ├── react-native-worklets
+│   │   │       │   │                   │   ├── react-native-workletsConfig.cmake
+│   │   │       │   │                   │   └── react-native-workletsConfigVersion.cmake
+│   │   │       │   │                   └── ReactAndroid
+│   │   │       │   │                       ├── ReactAndroidConfig.cmake
+│   │   │       │   │                       └── ReactAndroidConfigVersion.cmake
+│   │   │       │   ├── armeabi-v7a
+│   │   │       │   │   └── prefab
+│   │   │       │   │       └── lib
+│   │   │       │   │           └── arm-linux-androideabi
+│   │   │       │   │               └── cmake
+│   │   │       │   │                   ├── fbjni
+│   │   │       │   │                   │   ├── fbjniConfig.cmake
+│   │   │       │   │                   │   └── fbjniConfigVersion.cmake
+│   │   │       │   │                   ├── hermes-engine
+│   │   │       │   │                   │   ├── hermes-engineConfig.cmake
+│   │   │       │   │                   │   └── hermes-engineConfigVersion.cmake
+│   │   │       │   │                   ├── react-native-reanimated
+│   │   │       │   │                   │   ├── react-native-reanimatedConfig.cmake
+│   │   │       │   │                   │   └── react-native-reanimatedConfigVersion.cmake
+│   │   │       │   │                   ├── react-native-worklets
+│   │   │       │   │                   │   ├── react-native-workletsConfig.cmake
+│   │   │       │   │                   │   └── react-native-workletsConfigVersion.cmake
+│   │   │       │   │                   └── ReactAndroid
+│   │   │       │   │                       ├── ReactAndroidConfig.cmake
+│   │   │       │   │                       └── ReactAndroidConfigVersion.cmake
+│   │   │       │   ├── x86
+│   │   │       │   │   └── prefab
+│   │   │       │   │       └── lib
+│   │   │       │   │           └── i686-linux-android
+│   │   │       │   │               └── cmake
+│   │   │       │   │                   ├── fbjni
+│   │   │       │   │                   │   ├── fbjniConfig.cmake
+│   │   │       │   │                   │   └── fbjniConfigVersion.cmake
+│   │   │       │   │                   ├── hermes-engine
+│   │   │       │   │                   │   ├── hermes-engineConfig.cmake
+│   │   │       │   │                   │   └── hermes-engineConfigVersion.cmake
+│   │   │       │   │                   ├── react-native-reanimated
+│   │   │       │   │                   │   ├── react-native-reanimatedConfig.cmake
+│   │   │       │   │                   │   └── react-native-reanimatedConfigVersion.cmake
+│   │   │       │   │                   ├── react-native-worklets
+│   │   │       │   │                   │   ├── react-native-workletsConfig.cmake
+│   │   │       │   │                   │   └── react-native-workletsConfigVersion.cmake
+│   │   │       │   │                   └── ReactAndroid
+│   │   │       │   │                       ├── ReactAndroidConfig.cmake
+│   │   │       │   │                       └── ReactAndroidConfigVersion.cmake
+│   │   │       │   └── x86_64
+│   │   │       │       └── prefab
+│   │   │       │           └── lib
+│   │   │       │               └── x86_64-linux-android
+│   │   │       │                   └── cmake
+│   │   │       │                       ├── fbjni
+│   │   │       │                       │   ├── fbjniConfig.cmake
+│   │   │       │                       │   └── fbjniConfigVersion.cmake
+│   │   │       │                       ├── hermes-engine
+│   │   │       │                       │   ├── hermes-engineConfig.cmake
+│   │   │       │                       │   └── hermes-engineConfigVersion.cmake
+│   │   │       │                       ├── react-native-reanimated
+│   │   │       │                       │   ├── react-native-reanimatedConfig.cmake
+│   │   │       │                       │   └── react-native-reanimatedConfigVersion.cmake
+│   │   │       │                       ├── react-native-worklets
+│   │   │       │                       │   ├── react-native-workletsConfig.cmake
+│   │   │       │                       │   └── react-native-workletsConfigVersion.cmake
+│   │   │       │                       └── ReactAndroid
+│   │   │       │                           ├── ReactAndroidConfig.cmake
+│   │   │       │                           └── ReactAndroidConfigVersion.cmake
+│   │   │       ├── x86
+│   │   │       │   ├── .cmake
+│   │   │       │   │   └── api
+│   │   │       │   │       └── v1
+│   │   │       │   │           ├── query
+│   │   │       │   │           │   └── client-agp
+│   │   │       │   │           │       ├── cache-v2
+│   │   │       │   │           │       ├── cmakeFiles-v1
+│   │   │       │   │           │       └── codemodel-v2
+│   │   │       │   │           └── reply
+│   │   │       │   │               ├── cache-v2-93bfcc4468d46adc555f.json
+│   │   │       │   │               ├── cmakeFiles-v1-48a51d7991e7d2e6816c.json
+│   │   │       │   │               ├── codemodel-v2-7b0d4675c96aea45d83d.json
+│   │   │       │   │               ├── directory-.-Debug-d0094a50bb2071803777.json
+│   │   │       │   │               ├── directory-rnasyncstorage_autolinked_build-Debug-58328846ba717e863369.json
+│   │   │       │   │               ├── directory-rngesturehandler_codegen_autolinked_build-Debug-99e689f760d6838b0bec.json
+│   │   │       │   │               ├── directory-rnpicker_autolinked_build-Debug-58cbe6a257ca2a029674.json
+│   │   │       │   │               ├── directory-rnreanimated_autolinked_build-Debug-50401b34d98f47662d3e.json
+│   │   │       │   │               ├── directory-rnscreens_autolinked_build-Debug-cb6d49c3deda956e7f64.json
+│   │   │       │   │               ├── directory-RNVectorIconsSpec_autolinked_build-Debug-30f11296a6da6db01e5c.json
+│   │   │       │   │               ├── directory-rnworklets_autolinked_build-Debug-f54b84d9f5741d0b94c7.json
+│   │   │       │   │               ├── directory-safeareacontext_autolinked_build-Debug-4811c947b888d4f098d4.json
+│   │   │       │   │               ├── index-2026-02-28T21-30-18-0124.json
+│   │   │       │   │               ├── target-appmodules-Debug-788ebb6dc467bf9f4a4f.json
+│   │   │       │   │               ├── target-react_codegen_rnasyncstorage-Debug-3bb445bf8e8f0c63c33f.json
+│   │   │       │   │               ├── target-react_codegen_rngesturehandler_codegen-Debug-ea0b2e33f62fd946a780.json
+│   │   │       │   │               ├── target-react_codegen_rnpicker-Debug-f5e1c56cee976359f33b.json
+│   │   │       │   │               ├── target-react_codegen_rnreanimated-Debug-6389087b07a1034bd813.json
+│   │   │       │   │               ├── target-react_codegen_rnscreens-Debug-bcc72adf7cbda91791fd.json
+│   │   │       │   │               ├── target-react_codegen_RNVectorIconsSpec-Debug-129dc731ef37a4eaec9a.json
+│   │   │       │   │               ├── target-react_codegen_rnworklets-Debug-6e287f5e4b2390e9d10d.json
+│   │   │       │   │               └── target-react_codegen_safeareacontext-Debug-e6869ed4068da28525bf.json
+│   │   │       │   ├── .ninja_deps
+│   │   │       │   ├── .ninja_log
+│   │   │       │   ├── additional_project_files.txt
+│   │   │       │   ├── android_gradle_build.json
+│   │   │       │   ├── android_gradle_build_mini.json
+│   │   │       │   ├── build.ninja
+│   │   │       │   ├── build_file_index.txt
+│   │   │       │   ├── CMakeCache.txt
+│   │   │       │   ├── CMakeFiles
+│   │   │       │   │   ├── 3.22.1-g37088a8-dirty
+│   │   │       │   │   │   ├── CMakeCCompiler.cmake
+│   │   │       │   │   │   ├── CMakeCXXCompiler.cmake
+│   │   │       │   │   │   ├── CMakeDetermineCompilerABI_C.bin
+│   │   │       │   │   │   ├── CMakeDetermineCompilerABI_CXX.bin
+│   │   │       │   │   │   ├── CMakeSystem.cmake
+│   │   │       │   │   │   ├── CompilerIdC
+│   │   │       │   │   │   │   ├── CMakeCCompilerId.c
+│   │   │       │   │   │   │   ├── CMakeCCompilerId.o
+│   │   │       │   │   │   │   └── tmp
+│   │   │       │   │   │   └── CompilerIdCXX
+│   │   │       │   │   │       ├── CMakeCXXCompilerId.cpp
+│   │   │       │   │   │       ├── CMakeCXXCompilerId.o
+│   │   │       │   │   │       └── tmp
+│   │   │       │   │   ├── appmodules.dir
+│   │   │       │   │   │   └── C_
+│   │   │       │   │   │       └── Users
+│   │   │       │   │   │           └── Taran
+│   │   │       │   │   │               └── Desktop
+│   │   │       │   │   │                   └── iptv
+│   │   │       │   │   │                       └── IPTV
+│   │   │       │   │   │                           └── android
+│   │   │       │   │   │                               └── app
+│   │   │       │   │   │                                   └── build
+│   │   │       │   │   │                                       └── generated
+│   │   │       │   │   │                                           └── autolinking
+│   │   │       │   │   │                                               └── src
+│   │   │       │   │   │                                                   └── main
+│   │   │       │   │   │                                                       └── jni
+│   │   │       │   │   ├── cmake.check_cache
+│   │   │       │   │   ├── cmake.verify_globs
+│   │   │       │   │   ├── CMakeError.log
+│   │   │       │   │   ├── CMakeOutput.log
+│   │   │       │   │   ├── CMakeTmp
+│   │   │       │   │   ├── rules.ninja
+│   │   │       │   │   ├── TargetDirectories.txt
+│   │   │       │   │   ├── VerifyGlobs.cmake
+│   │   │       │   │   └── _CMakeLTOTest-CXX
+│   │   │       │   │       ├── bin
+│   │   │       │   │       │   ├── .ninja_deps
+│   │   │       │   │       │   ├── .ninja_log
+│   │   │       │   │       │   ├── build.ninja
+│   │   │       │   │       │   ├── CMakeCache.txt
+│   │   │       │   │       │   ├── CMakeFiles
+│   │   │       │   │       │   │   ├── boo.dir
+│   │   │       │   │       │   │   │   └── main.cpp.o
+│   │   │       │   │       │   │   ├── cmake.check_cache
+│   │   │       │   │       │   │   ├── foo.dir
+│   │   │       │   │       │   │   │   └── foo.cpp.o
+│   │   │       │   │       │   │   ├── rules.ninja
+│   │   │       │   │       │   │   └── TargetDirectories.txt
+│   │   │       │   │       │   ├── cmake_install.cmake
+│   │   │       │   │       │   └── libfoo.a
+│   │   │       │   │       └── src
+│   │   │       │   │           ├── CMakeLists.txt
+│   │   │       │   │           ├── foo.cpp
+│   │   │       │   │           └── main.cpp
+│   │   │       │   ├── cmake_install.cmake
+│   │   │       │   ├── compile_commands.json
+│   │   │       │   ├── compile_commands.json.bin
+│   │   │       │   ├── configure_fingerprint.bin
+│   │   │       │   ├── metadata_generation_command.txt
+│   │   │       │   ├── prefab_config.json
+│   │   │       │   ├── rnasyncstorage_autolinked_build
+│   │   │       │   │   ├── CMakeFiles
+│   │   │       │   │   │   └── react_codegen_rnasyncstorage.dir
+│   │   │       │   │   │       └── react
+│   │   │       │   │   │           └── renderer
+│   │   │       │   │   │               └── components
+│   │   │       │   │   │                   └── rnasyncstorage
+│   │   │       │   │   └── cmake_install.cmake
+│   │   │       │   ├── rngesturehandler_codegen_autolinked_build
+│   │   │       │   │   ├── CMakeFiles
+│   │   │       │   │   │   └── react_codegen_rngesturehandler_codegen.dir
+│   │   │       │   │   │       └── react
+│   │   │       │   │   │           └── renderer
+│   │   │       │   │   │               └── components
+│   │   │       │   │   │                   └── rngesturehandler_codegen
+│   │   │       │   │   │                       ├── ComponentDescriptors.cpp-b372cc1d.o.tmp
+│   │   │       │   │   │                       ├── Props.cpp-0c61eae9.o.tmp
+│   │   │       │   │   │                       └── ShadowNodes.cpp-1824976b.o.tmp
+│   │   │       │   │   └── cmake_install.cmake
+│   │   │       │   ├── rnpicker_autolinked_build
+│   │   │       │   │   ├── CMakeFiles
+│   │   │       │   │   │   └── react_codegen_rnpicker.dir
+│   │   │       │   │   │       ├── 3719b35259839848e29a3752d58d4986
+│   │   │       │   │   │       │   └── source
+│   │   │       │   │   │       │       └── codegen
+│   │   │       │   │   │       │           └── jni
+│   │   │       │   │   │       │               └── react
+│   │   │       │   │   │       │                   └── renderer
+│   │   │       │   │   │       │                       └── components
+│   │   │       │   │   │       │                           └── rnpicker
+│   │   │       │   │   │       ├── 7954a242caa4dcfeea77f78c938f578d
+│   │   │       │   │   │       │   └── generated
+│   │   │       │   │   │       │       └── source
+│   │   │       │   │   │       │           └── codegen
+│   │   │       │   │   │       │               └── jni
+│   │   │       │   │   │       │                   └── react
+│   │   │       │   │   │       │                       └── renderer
+│   │   │       │   │   │       │                           └── components
+│   │   │       │   │   │       │                               └── rnpicker
+│   │   │       │   │   │       │                                   └── ShadowNodes.cpp-10202d95.o.tmp
+│   │   │       │   │   │       └── 9f73ca6639e3f37f8d8a7b9dcfc5a95f
+│   │   │       │   │   │           └── build
+│   │   │       │   │   │               └── generated
+│   │   │       │   │   │                   └── source
+│   │   │       │   │   │                       └── codegen
+│   │   │       │   │   │                           └── jni
+│   │   │       │   │   │                               └── react
+│   │   │       │   │   │                                   └── renderer
+│   │   │       │   │   │                                       └── components
+│   │   │       │   │   │                                           └── rnpicker
+│   │   │       │   │   │                                               └── Props.cpp-3c6cc75b.o.tmp
+│   │   │       │   │   └── cmake_install.cmake
+│   │   │       │   ├── rnreanimated_autolinked_build
+│   │   │       │   │   ├── CMakeFiles
+│   │   │       │   │   │   └── react_codegen_rnreanimated.dir
+│   │   │       │   │   │       └── react
+│   │   │       │   │   │           └── renderer
+│   │   │       │   │   │               └── components
+│   │   │       │   │   │                   └── rnreanimated
+│   │   │       │   │   │                       └── ComponentDescriptors.cpp-2722a0f4.o.tmp
+│   │   │       │   │   └── cmake_install.cmake
+│   │   │       │   ├── rnscreens_autolinked_build
+│   │   │       │   │   ├── CMakeFiles
+│   │   │       │   │   │   └── react_codegen_rnscreens.dir
+│   │   │       │   │   │       ├── 135adcf1bb05802ceedee0c07f9c9fab
+│   │   │       │   │   │       │   └── cpp
+│   │   │       │   │   │       │       └── react
+│   │   │       │   │   │       │           └── renderer
+│   │   │       │   │   │       │               └── components
+│   │   │       │   │   │       │                   └── rnscreens
+│   │   │       │   │   │       ├── 1c0fd513a005ef4fe59fff6f1fcced31
+│   │   │       │   │   │       │   └── react
+│   │   │       │   │   │       │       └── renderer
+│   │   │       │   │   │       │           └── components
+│   │   │       │   │   │       │               └── rnscreens
+│   │   │       │   │   │       ├── 2ea113f299d272051e33647e984403ab
+│   │   │       │   │   │       │   └── codegen
+│   │   │       │   │   │       │       └── jni
+│   │   │       │   │   │       │           └── react
+│   │   │       │   │   │       │               └── renderer
+│   │   │       │   │   │       │                   └── components
+│   │   │       │   │   │       │                       └── rnscreens
+│   │   │       │   │   │       ├── 5dc3c9d10a19af75f6945b3ce0840f7f
+│   │   │       │   │   │       │   └── generated
+│   │   │       │   │   │       │       └── source
+│   │   │       │   │   │       │           └── codegen
+│   │   │       │   │   │       │               └── jni
+│   │   │       │   │   │       │                   └── react
+│   │   │       │   │   │       │                       └── renderer
+│   │   │       │   │   │       │                           └── components
+│   │   │       │   │   │       │                               └── rnscreens
+│   │   │       │   │   │       ├── 747fff95c79079c32d8b0371722b81b4
+│   │   │       │   │   │       │   └── common
+│   │   │       │   │   │       │       └── cpp
+│   │   │       │   │   │       │           └── react
+│   │   │       │   │   │       │               └── renderer
+│   │   │       │   │   │       │                   └── components
+│   │   │       │   │   │       │                       └── rnscreens
+│   │   │       │   │   │       └── 7999889ad12fd3fd629b69706a6f1a0d
+│   │   │       │   │   │           └── source
+│   │   │       │   │   │               └── codegen
+│   │   │       │   │   │                   └── jni
+│   │   │       │   │   │                       └── react
+│   │   │       │   │   │                           └── renderer
+│   │   │       │   │   │                               └── components
+│   │   │       │   │   │                                   └── rnscreens
+│   │   │       │   │   └── cmake_install.cmake
+│   │   │       │   ├── RNVectorIconsSpec_autolinked_build
+│   │   │       │   │   ├── CMakeFiles
+│   │   │       │   │   │   └── react_codegen_RNVectorIconsSpec.dir
+│   │   │       │   │   │       └── react
+│   │   │       │   │   │           └── renderer
+│   │   │       │   │   │               └── components
+│   │   │       │   │   │                   └── RNVectorIconsSpec
+│   │   │       │   │   └── cmake_install.cmake
+│   │   │       │   ├── rnworklets_autolinked_build
+│   │   │       │   │   ├── CMakeFiles
+│   │   │       │   │   │   └── react_codegen_rnworklets.dir
+│   │   │       │   │   │       └── react
+│   │   │       │   │   │           └── renderer
+│   │   │       │   │   │               └── components
+│   │   │       │   │   │                   └── rnworklets
+│   │   │       │   │   └── cmake_install.cmake
+│   │   │       │   ├── safeareacontext_autolinked_build
+│   │   │       │   │   ├── CMakeFiles
+│   │   │       │   │   │   └── react_codegen_safeareacontext.dir
+│   │   │       │   │   │       ├── 17fac1fc51143b34ebe8b493f3ce207a
+│   │   │       │   │   │       │   └── react
+│   │   │       │   │   │       │       └── renderer
+│   │   │       │   │   │       │           └── components
+│   │   │       │   │   │       │               └── safeareacontext
+│   │   │       │   │   │       ├── 381f96dad4500b81b89659f8f918c33a
+│   │   │       │   │   │       │   └── jni
+│   │   │       │   │   │       │       └── react
+│   │   │       │   │   │       │           └── renderer
+│   │   │       │   │   │       │               └── components
+│   │   │       │   │   │       │                   └── safeareacontext
+│   │   │       │   │   │       ├── 3eb53aca7c0660d1429048a4fde99d9e
+│   │   │       │   │   │       │   └── react
+│   │   │       │   │   │       │       └── renderer
+│   │   │       │   │   │       │           └── components
+│   │   │       │   │   │       │               └── safeareacontext
+│   │   │       │   │   │       ├── 44f249fc5430cec24850999d910e68ef
+│   │   │       │   │   │       │   └── codegen
+│   │   │       │   │   │       │       └── jni
+│   │   │       │   │   │       │           └── react
+│   │   │       │   │   │       │               └── renderer
+│   │   │       │   │   │       │                   └── components
+│   │   │       │   │   │       │                       └── safeareacontext
+│   │   │       │   │   │       ├── 832aef0c00a9b2de1bea4df3239fff77
+│   │   │       │   │   │       │   └── renderer
+│   │   │       │   │   │       │       └── components
+│   │   │       │   │   │       │           └── safeareacontext
+│   │   │       │   │   │       └── de87ec94129e3c4723111fdc0fa16acb
+│   │   │       │   │   │           └── build
+│   │   │       │   │   │               └── generated
+│   │   │       │   │   │                   └── source
+│   │   │       │   │   │                       └── codegen
+│   │   │       │   │   │                           └── jni
+│   │   │       │   │   └── cmake_install.cmake
+│   │   │       │   └── symbol_folder_index.txt
+│   │   │       └── x86_64
+│   │   │           ├── .cmake
+│   │   │           │   └── api
+│   │   │           │       └── v1
+│   │   │           │           ├── query
+│   │   │           │           │   └── client-agp
+│   │   │           │           │       ├── cache-v2
+│   │   │           │           │       ├── cmakeFiles-v1
+│   │   │           │           │       └── codemodel-v2
+│   │   │           │           └── reply
+│   │   │           │               ├── cache-v2-b975aba507bb0aedad09.json
+│   │   │           │               ├── cmakeFiles-v1-dcb88cad1d5d13aea03b.json
+│   │   │           │               ├── codemodel-v2-8809b51fa9538f3780cd.json
+│   │   │           │               ├── directory-.-Debug-d0094a50bb2071803777.json
+│   │   │           │               ├── directory-rnasyncstorage_autolinked_build-Debug-58328846ba717e863369.json
+│   │   │           │               ├── directory-rngesturehandler_codegen_autolinked_build-Debug-99e689f760d6838b0bec.json
+│   │   │           │               ├── directory-rnpicker_autolinked_build-Debug-58cbe6a257ca2a029674.json
+│   │   │           │               ├── directory-rnreanimated_autolinked_build-Debug-50401b34d98f47662d3e.json
+│   │   │           │               ├── directory-rnscreens_autolinked_build-Debug-cb6d49c3deda956e7f64.json
+│   │   │           │               ├── directory-RNVectorIconsSpec_autolinked_build-Debug-30f11296a6da6db01e5c.json
+│   │   │           │               ├── directory-rnworklets_autolinked_build-Debug-f54b84d9f5741d0b94c7.json
+│   │   │           │               ├── directory-safeareacontext_autolinked_build-Debug-4811c947b888d4f098d4.json
+│   │   │           │               ├── index-2026-02-28T21-34-50-0905.json
+│   │   │           │               ├── target-appmodules-Debug-6b257b2ec6847b2fac0a.json
+│   │   │           │               ├── target-react_codegen_rnasyncstorage-Debug-3bb445bf8e8f0c63c33f.json
+│   │   │           │               ├── target-react_codegen_rngesturehandler_codegen-Debug-ea0b2e33f62fd946a780.json
+│   │   │           │               ├── target-react_codegen_rnpicker-Debug-139d72679bd580a0cbd1.json
+│   │   │           │               ├── target-react_codegen_rnreanimated-Debug-6389087b07a1034bd813.json
+│   │   │           │               ├── target-react_codegen_rnscreens-Debug-1180915ef86f2fc409fb.json
+│   │   │           │               ├── target-react_codegen_RNVectorIconsSpec-Debug-129dc731ef37a4eaec9a.json
+│   │   │           │               ├── target-react_codegen_rnworklets-Debug-6e287f5e4b2390e9d10d.json
+│   │   │           │               └── target-react_codegen_safeareacontext-Debug-4f7ee4fb6802914f5897.json
+│   │   │           ├── .ninja_deps
+│   │   │           ├── .ninja_log
+│   │   │           ├── additional_project_files.txt
+│   │   │           ├── android_gradle_build.json
+│   │   │           ├── android_gradle_build_mini.json
+│   │   │           ├── build.ninja
+│   │   │           ├── build_file_index.txt
+│   │   │           ├── CMakeCache.txt
+│   │   │           ├── CMakeFiles
+│   │   │           │   ├── 3.22.1-g37088a8-dirty
+│   │   │           │   │   ├── CMakeCCompiler.cmake
+│   │   │           │   │   ├── CMakeCXXCompiler.cmake
+│   │   │           │   │   ├── CMakeDetermineCompilerABI_C.bin
+│   │   │           │   │   ├── CMakeDetermineCompilerABI_CXX.bin
+│   │   │           │   │   ├── CMakeSystem.cmake
+│   │   │           │   │   ├── CompilerIdC
+│   │   │           │   │   │   ├── CMakeCCompilerId.c
+│   │   │           │   │   │   ├── CMakeCCompilerId.o
+│   │   │           │   │   │   └── tmp
+│   │   │           │   │   └── CompilerIdCXX
+│   │   │           │   │       ├── CMakeCXXCompilerId.cpp
+│   │   │           │   │       ├── CMakeCXXCompilerId.o
+│   │   │           │   │       └── tmp
+│   │   │           │   ├── appmodules.dir
+│   │   │           │   │   └── C_
+│   │   │           │   │       └── Users
+│   │   │           │   │           └── Taran
+│   │   │           │   │               └── Desktop
+│   │   │           │   │                   └── iptv
+│   │   │           │   │                       └── IPTV
+│   │   │           │   │                           └── android
+│   │   │           │   │                               └── app
+│   │   │           │   │                                   └── build
+│   │   │           │   │                                       └── generated
+│   │   │           │   │                                           └── autolinking
+│   │   │           │   │                                               └── src
+│   │   │           │   │                                                   └── main
+│   │   │           │   │                                                       └── jni
+│   │   │           │   ├── cmake.check_cache
+│   │   │           │   ├── cmake.verify_globs
+│   │   │           │   ├── CMakeError.log
+│   │   │           │   ├── CMakeOutput.log
+│   │   │           │   ├── CMakeTmp
+│   │   │           │   ├── rules.ninja
+│   │   │           │   ├── TargetDirectories.txt
+│   │   │           │   ├── VerifyGlobs.cmake
+│   │   │           │   └── _CMakeLTOTest-CXX
+│   │   │           │       ├── bin
+│   │   │           │       │   ├── .ninja_deps
+│   │   │           │       │   ├── .ninja_log
+│   │   │           │       │   ├── build.ninja
+│   │   │           │       │   ├── CMakeCache.txt
+│   │   │           │       │   ├── CMakeFiles
+│   │   │           │       │   │   ├── boo.dir
+│   │   │           │       │   │   │   └── main.cpp.o
+│   │   │           │       │   │   ├── cmake.check_cache
+│   │   │           │       │   │   ├── foo.dir
+│   │   │           │       │   │   │   └── foo.cpp.o
+│   │   │           │       │   │   ├── rules.ninja
+│   │   │           │       │   │   └── TargetDirectories.txt
+│   │   │           │       │   ├── cmake_install.cmake
+│   │   │           │       │   └── libfoo.a
+│   │   │           │       └── src
+│   │   │           │           ├── CMakeLists.txt
+│   │   │           │           ├── foo.cpp
+│   │   │           │           └── main.cpp
+│   │   │           ├── cmake_install.cmake
+│   │   │           ├── compile_commands.json
+│   │   │           ├── compile_commands.json.bin
+│   │   │           ├── configure_fingerprint.bin
+│   │   │           ├── metadata_generation_command.txt
+│   │   │           ├── prefab_config.json
+│   │   │           ├── rnasyncstorage_autolinked_build
+│   │   │           │   ├── CMakeFiles
+│   │   │           │   │   └── react_codegen_rnasyncstorage.dir
+│   │   │           │   │       └── react
+│   │   │           │   │           └── renderer
+│   │   │           │   │               └── components
+│   │   │           │   │                   └── rnasyncstorage
+│   │   │           │   └── cmake_install.cmake
+│   │   │           ├── rngesturehandler_codegen_autolinked_build
+│   │   │           │   ├── CMakeFiles
+│   │   │           │   │   └── react_codegen_rngesturehandler_codegen.dir
+│   │   │           │   │       └── react
+│   │   │           │   │           └── renderer
+│   │   │           │   │               └── components
+│   │   │           │   │                   └── rngesturehandler_codegen
+│   │   │           │   └── cmake_install.cmake
+│   │   │           ├── rnpicker_autolinked_build
+│   │   │           │   ├── CMakeFiles
+│   │   │           │   │   └── react_codegen_rnpicker.dir
+│   │   │           │   │       ├── 3719b35259839848e29a3752d58d4986
+│   │   │           │   │       │   └── source
+│   │   │           │   │       │       └── codegen
+│   │   │           │   │       │           └── jni
+│   │   │           │   │       │               └── react
+│   │   │           │   │       │                   └── renderer
+│   │   │           │   │       │                       └── components
+│   │   │           │   │       │                           └── rnpicker
+│   │   │           │   │       ├── 7954a242caa4dcfeea77f78c938f578d
+│   │   │           │   │       │   └── generated
+│   │   │           │   │       │       └── source
+│   │   │           │   │       │           └── codegen
+│   │   │           │   │       │               └── jni
+│   │   │           │   │       │                   └── react
+│   │   │           │   │       │                       └── renderer
+│   │   │           │   │       │                           └── components
+│   │   │           │   │       │                               └── rnpicker
+│   │   │           │   │       └── 8075503abddc4f3d0acdc00ce280ebed
+│   │   │           │   │           └── codegen
+│   │   │           │   │               └── jni
+│   │   │           │   │                   └── react
+│   │   │           │   │                       └── renderer
+│   │   │           │   │                           └── components
+│   │   │           │   │                               └── rnpicker
+│   │   │           │   └── cmake_install.cmake
+│   │   │           ├── rnreanimated_autolinked_build
+│   │   │           │   ├── CMakeFiles
+│   │   │           │   │   └── react_codegen_rnreanimated.dir
+│   │   │           │   │       └── react
+│   │   │           │   │           └── renderer
+│   │   │           │   │               └── components
+│   │   │           │   │                   └── rnreanimated
+│   │   │           │   └── cmake_install.cmake
+│   │   │           ├── rnscreens_autolinked_build
+│   │   │           │   ├── CMakeFiles
+│   │   │           │   │   └── react_codegen_rnscreens.dir
+│   │   │           │   │       ├── 135adcf1bb05802ceedee0c07f9c9fab
+│   │   │           │   │       │   └── cpp
+│   │   │           │   │       │       └── react
+│   │   │           │   │       │           └── renderer
+│   │   │           │   │       │               └── components
+│   │   │           │   │       │                   └── rnscreens
+│   │   │           │   │       ├── 1c0fd513a005ef4fe59fff6f1fcced31
+│   │   │           │   │       │   └── react
+│   │   │           │   │       │       └── renderer
+│   │   │           │   │       │           └── components
+│   │   │           │   │       │               └── rnscreens
+│   │   │           │   │       ├── 2ea113f299d272051e33647e984403ab
+│   │   │           │   │       │   └── codegen
+│   │   │           │   │       │       └── jni
+│   │   │           │   │       │           └── react
+│   │   │           │   │       │               └── renderer
+│   │   │           │   │       │                   └── components
+│   │   │           │   │       │                       └── rnscreens
+│   │   │           │   │       ├── 50927e56d988cbbc5e3b28c54b2f4cee
+│   │   │           │   │       │   └── renderer
+│   │   │           │   │       │       └── components
+│   │   │           │   │       │           └── rnscreens
+│   │   │           │   │       ├── 5dc3c9d10a19af75f6945b3ce0840f7f
+│   │   │           │   │       │   └── generated
+│   │   │           │   │       │       └── source
+│   │   │           │   │       │           └── codegen
+│   │   │           │   │       │               └── jni
+│   │   │           │   │       │                   └── react
+│   │   │           │   │       │                       └── renderer
+│   │   │           │   │       │                           └── components
+│   │   │           │   │       │                               └── rnscreens
+│   │   │           │   │       ├── 747fff95c79079c32d8b0371722b81b4
+│   │   │           │   │       │   └── common
+│   │   │           │   │       │       └── cpp
+│   │   │           │   │       │           └── react
+│   │   │           │   │       │               └── renderer
+│   │   │           │   │       │                   └── components
+│   │   │           │   │       │                       └── rnscreens
+│   │   │           │   │       └── 7999889ad12fd3fd629b69706a6f1a0d
+│   │   │           │   │           └── source
+│   │   │           │   │               └── codegen
+│   │   │           │   │                   └── jni
+│   │   │           │   │                       └── react
+│   │   │           │   │                           └── renderer
+│   │   │           │   │                               └── components
+│   │   │           │   │                                   └── rnscreens
+│   │   │           │   └── cmake_install.cmake
+│   │   │           ├── RNVectorIconsSpec_autolinked_build
+│   │   │           │   ├── CMakeFiles
+│   │   │           │   │   └── react_codegen_RNVectorIconsSpec.dir
+│   │   │           │   │       └── react
+│   │   │           │   │           └── renderer
+│   │   │           │   │               └── components
+│   │   │           │   │                   └── RNVectorIconsSpec
+│   │   │           │   └── cmake_install.cmake
+│   │   │           ├── rnworklets_autolinked_build
+│   │   │           │   ├── CMakeFiles
+│   │   │           │   │   └── react_codegen_rnworklets.dir
+│   │   │           │   │       └── react
+│   │   │           │   │           └── renderer
+│   │   │           │   │               └── components
+│   │   │           │   │                   └── rnworklets
+│   │   │           │   └── cmake_install.cmake
+│   │   │           ├── safeareacontext_autolinked_build
+│   │   │           │   ├── CMakeFiles
+│   │   │           │   │   └── react_codegen_safeareacontext.dir
+│   │   │           │   │       ├── 381f96dad4500b81b89659f8f918c33a
+│   │   │           │   │       │   └── jni
+│   │   │           │   │       │       └── react
+│   │   │           │   │       │           └── renderer
+│   │   │           │   │       │               └── components
+│   │   │           │   │       │                   └── safeareacontext
+│   │   │           │   │       ├── 44f249fc5430cec24850999d910e68ef
+│   │   │           │   │       │   └── codegen
+│   │   │           │   │       │       └── jni
+│   │   │           │   │       │           └── react
+│   │   │           │   │       │               └── renderer
+│   │   │           │   │       │                   └── components
+│   │   │           │   │       │                       └── safeareacontext
+│   │   │           │   │       ├── 557431ef61ee6268ce4ced41cc38dfe8
+│   │   │           │   │       │   └── components
+│   │   │           │   │       │       └── safeareacontext
+│   │   │           │   │       ├── 832aef0c00a9b2de1bea4df3239fff77
+│   │   │           │   │       │   └── renderer
+│   │   │           │   │       │       └── components
+│   │   │           │   │       │           └── safeareacontext
+│   │   │           │   │       ├── 86f3cf4b328a8c8402e48d70db43b48e
+│   │   │           │   │       │   └── generated
+│   │   │           │   │       │       └── source
+│   │   │           │   │       │           └── codegen
+│   │   │           │   │       │               └── jni
+│   │   │           │   │       └── c981267d766f078fe415e3c90bb31d38
+│   │   │           │   │           └── renderer
+│   │   │           │   │               └── components
+│   │   │           │   │                   └── safeareacontext
+│   │   │           │   └── cmake_install.cmake
+│   │   │           └── symbol_folder_index.txt
+│   │   └── tools
+│   │       └── debug
+│   │           ├── arm64-v8a
+│   │           │   └── compile_commands.json
+│   │           ├── armeabi-v7a
+│   │           │   └── compile_commands.json
+│   │           ├── x86
+│   │           │   └── compile_commands.json
+│   │           └── x86_64
+│   │               └── compile_commands.json
+│   ├── build
+│   │   ├── generated
+│   │   │   ├── autolinking
+│   │   │   │   └── src
+│   │   │   │       └── main
+│   │   │   │           ├── java
+│   │   │   │           │   └── com
+│   │   │   │           │       └── facebook
+│   │   │   │           │           └── react
+│   │   │   │           │               ├── PackageList.java
+│   │   │   │           │               └── ReactNativeApplicationEntryPoint.java
+│   │   │   │           └── jni
+│   │   │   │               ├── Android-autolinking.cmake
+│   │   │   │               ├── autolinking.cpp
+│   │   │   │               └── autolinking.h
+│   │   │   ├── res
+│   │   │   │   ├── pngs
+│   │   │   │   │   └── debug
+│   │   │   │   └── resValues
+│   │   │   │       └── debug
+│   │   │   │           └── values
+│   │   │   │               └── gradleResValues.xml
+│   │   │   └── source
+│   │   │       └── buildConfig
+│   │   │           └── debug
+│   │   │               └── com
+│   │   │                   └── iptv
+│   │   │                       └── BuildConfig.java
+│   │   ├── intermediates
+│   │   │   ├── aar_metadata_check
+│   │   │   │   └── debug
+│   │   │   │       └── checkDebugAarMetadata
+│   │   │   ├── annotation_processor_list
+│   │   │   │   └── debug
+│   │   │   │       └── javaPreCompileDebug
+│   │   │   │           └── annotationProcessors.json
+│   │   │   ├── compatible_screen_manifest
+│   │   │   │   └── debug
+│   │   │   │       └── createDebugCompatibleScreenManifests
+│   │   │   │           └── output-metadata.json
+│   │   │   ├── compile_and_runtime_not_namespaced_r_class_jar
+│   │   │   │   └── debug
+│   │   │   │       └── processDebugResources
+│   │   │   │           └── R.jar
+│   │   │   ├── cxx
+│   │   │   │   └── Debug
+│   │   │   │       └── 463y5y7e
+│   │   │   │           └── logs
+│   │   │   │               └── armeabi-v7a
+│   │   │   │                   ├── clean_command.bat
+│   │   │   │                   ├── clean_stacktrace.txt
+│   │   │   │                   ├── clean_stderr.txt
+│   │   │   │                   └── clean_stdout.txt
+│   │   │   ├── data_binding_layout_info_type_merge
+│   │   │   │   └── debug
+│   │   │   │       └── mergeDebugResources
+│   │   │   │           └── out
+│   │   │   ├── data_binding_layout_info_type_package
+│   │   │   │   └── debug
+│   │   │   │       └── packageDebugResources
+│   │   │   │           └── out
+│   │   │   ├── incremental
+│   │   │   │   ├── debug
+│   │   │   │   │   ├── mergeDebugResources
+│   │   │   │   │   │   ├── compile-file-map.properties
+│   │   │   │   │   │   ├── merged.dir
+│   │   │   │   │   │   │   ├── values
+│   │   │   │   │   │   │   │   └── values.xml
+│   │   │   │   │   │   │   ├── values-af
+│   │   │   │   │   │   │   │   └── values-af.xml
+│   │   │   │   │   │   │   ├── values-am
+│   │   │   │   │   │   │   │   └── values-am.xml
+│   │   │   │   │   │   │   ├── values-ar
+│   │   │   │   │   │   │   │   └── values-ar.xml
+│   │   │   │   │   │   │   ├── values-as
+│   │   │   │   │   │   │   │   └── values-as.xml
+│   │   │   │   │   │   │   ├── values-az
+│   │   │   │   │   │   │   │   └── values-az.xml
+│   │   │   │   │   │   │   ├── values-b+es+419
+│   │   │   │   │   │   │   │   └── values-b+es+419.xml
+│   │   │   │   │   │   │   ├── values-b+sr+Latn
+│   │   │   │   │   │   │   │   └── values-b+sr+Latn.xml
+│   │   │   │   │   │   │   ├── values-be
+│   │   │   │   │   │   │   │   └── values-be.xml
+│   │   │   │   │   │   │   ├── values-bg
+│   │   │   │   │   │   │   │   └── values-bg.xml
+│   │   │   │   │   │   │   ├── values-bn
+│   │   │   │   │   │   │   │   └── values-bn.xml
+│   │   │   │   │   │   │   ├── values-bs
+│   │   │   │   │   │   │   │   └── values-bs.xml
+│   │   │   │   │   │   │   ├── values-ca
+│   │   │   │   │   │   │   │   └── values-ca.xml
+│   │   │   │   │   │   │   ├── values-cs
+│   │   │   │   │   │   │   │   └── values-cs.xml
+│   │   │   │   │   │   │   ├── values-da
+│   │   │   │   │   │   │   │   └── values-da.xml
+│   │   │   │   │   │   │   ├── values-de
+│   │   │   │   │   │   │   │   └── values-de.xml
+│   │   │   │   │   │   │   ├── values-el
+│   │   │   │   │   │   │   │   └── values-el.xml
+│   │   │   │   │   │   │   ├── values-en-rAU
+│   │   │   │   │   │   │   │   └── values-en-rAU.xml
+│   │   │   │   │   │   │   ├── values-en-rCA
+│   │   │   │   │   │   │   │   └── values-en-rCA.xml
+│   │   │   │   │   │   │   ├── values-en-rGB
+│   │   │   │   │   │   │   │   └── values-en-rGB.xml
+│   │   │   │   │   │   │   ├── values-en-rIN
+│   │   │   │   │   │   │   │   └── values-en-rIN.xml
+│   │   │   │   │   │   │   ├── values-en-rXC
+│   │   │   │   │   │   │   │   └── values-en-rXC.xml
+│   │   │   │   │   │   │   ├── values-es
+│   │   │   │   │   │   │   │   └── values-es.xml
+│   │   │   │   │   │   │   ├── values-es-rES
+│   │   │   │   │   │   │   │   └── values-es-rES.xml
+│   │   │   │   │   │   │   ├── values-es-rUS
+│   │   │   │   │   │   │   │   └── values-es-rUS.xml
+│   │   │   │   │   │   │   ├── values-et
+│   │   │   │   │   │   │   │   └── values-et.xml
+│   │   │   │   │   │   │   ├── values-eu
+│   │   │   │   │   │   │   │   └── values-eu.xml
+│   │   │   │   │   │   │   ├── values-fa
+│   │   │   │   │   │   │   │   └── values-fa.xml
+│   │   │   │   │   │   │   ├── values-fi
+│   │   │   │   │   │   │   │   └── values-fi.xml
+│   │   │   │   │   │   │   ├── values-fr
+│   │   │   │   │   │   │   │   └── values-fr.xml
+│   │   │   │   │   │   │   ├── values-fr-rCA
+│   │   │   │   │   │   │   │   └── values-fr-rCA.xml
+│   │   │   │   │   │   │   ├── values-gl
+│   │   │   │   │   │   │   │   └── values-gl.xml
+│   │   │   │   │   │   │   ├── values-gu
+│   │   │   │   │   │   │   │   └── values-gu.xml
+│   │   │   │   │   │   │   ├── values-h320dp-port-v13
+│   │   │   │   │   │   │   │   └── values-h320dp-port-v13.xml
+│   │   │   │   │   │   │   ├── values-h360dp-land-v13
+│   │   │   │   │   │   │   │   └── values-h360dp-land-v13.xml
+│   │   │   │   │   │   │   ├── values-h480dp-land-v13
+│   │   │   │   │   │   │   │   └── values-h480dp-land-v13.xml
+│   │   │   │   │   │   │   ├── values-h480dp-v13
+│   │   │   │   │   │   │   │   └── values-h480dp-v13.xml
+│   │   │   │   │   │   │   ├── values-h550dp-port-v13
+│   │   │   │   │   │   │   │   └── values-h550dp-port-v13.xml
+│   │   │   │   │   │   │   ├── values-h720dp-v13
+│   │   │   │   │   │   │   │   └── values-h720dp-v13.xml
+│   │   │   │   │   │   │   ├── values-hdpi-v4
+│   │   │   │   │   │   │   │   └── values-hdpi-v4.xml
+│   │   │   │   │   │   │   ├── values-hi
+│   │   │   │   │   │   │   │   └── values-hi.xml
+│   │   │   │   │   │   │   ├── values-hr
+│   │   │   │   │   │   │   │   └── values-hr.xml
+│   │   │   │   │   │   │   ├── values-hu
+│   │   │   │   │   │   │   │   └── values-hu.xml
+│   │   │   │   │   │   │   ├── values-hy
+│   │   │   │   │   │   │   │   └── values-hy.xml
+│   │   │   │   │   │   │   ├── values-in
+│   │   │   │   │   │   │   │   └── values-in.xml
+│   │   │   │   │   │   │   ├── values-is
+│   │   │   │   │   │   │   │   └── values-is.xml
+│   │   │   │   │   │   │   ├── values-it
+│   │   │   │   │   │   │   │   └── values-it.xml
+│   │   │   │   │   │   │   ├── values-iw
+│   │   │   │   │   │   │   │   └── values-iw.xml
+│   │   │   │   │   │   │   ├── values-ja
+│   │   │   │   │   │   │   │   └── values-ja.xml
+│   │   │   │   │   │   │   ├── values-ka
+│   │   │   │   │   │   │   │   └── values-ka.xml
+│   │   │   │   │   │   │   ├── values-kk
+│   │   │   │   │   │   │   │   └── values-kk.xml
+│   │   │   │   │   │   │   ├── values-km
+│   │   │   │   │   │   │   │   └── values-km.xml
+│   │   │   │   │   │   │   ├── values-kn
+│   │   │   │   │   │   │   │   └── values-kn.xml
+│   │   │   │   │   │   │   ├── values-ko
+│   │   │   │   │   │   │   │   └── values-ko.xml
+│   │   │   │   │   │   │   ├── values-ky
+│   │   │   │   │   │   │   │   └── values-ky.xml
+│   │   │   │   │   │   │   ├── values-land
+│   │   │   │   │   │   │   │   └── values-land.xml
+│   │   │   │   │   │   │   ├── values-large-v4
+│   │   │   │   │   │   │   │   └── values-large-v4.xml
+│   │   │   │   │   │   │   ├── values-ldltr-v21
+│   │   │   │   │   │   │   │   └── values-ldltr-v21.xml
+│   │   │   │   │   │   │   ├── values-ldrtl-v17
+│   │   │   │   │   │   │   │   └── values-ldrtl-v17.xml
+│   │   │   │   │   │   │   ├── values-lo
+│   │   │   │   │   │   │   │   └── values-lo.xml
+│   │   │   │   │   │   │   ├── values-lt
+│   │   │   │   │   │   │   │   └── values-lt.xml
+│   │   │   │   │   │   │   ├── values-lv
+│   │   │   │   │   │   │   │   └── values-lv.xml
+│   │   │   │   │   │   │   ├── values-mk
+│   │   │   │   │   │   │   │   └── values-mk.xml
+│   │   │   │   │   │   │   ├── values-ml
+│   │   │   │   │   │   │   │   └── values-ml.xml
+│   │   │   │   │   │   │   ├── values-mn
+│   │   │   │   │   │   │   │   └── values-mn.xml
+│   │   │   │   │   │   │   ├── values-mr
+│   │   │   │   │   │   │   │   └── values-mr.xml
+│   │   │   │   │   │   │   ├── values-ms
+│   │   │   │   │   │   │   │   └── values-ms.xml
+│   │   │   │   │   │   │   ├── values-my
+│   │   │   │   │   │   │   │   └── values-my.xml
+│   │   │   │   │   │   │   ├── values-nb
+│   │   │   │   │   │   │   │   └── values-nb.xml
+│   │   │   │   │   │   │   ├── values-ne
+│   │   │   │   │   │   │   │   └── values-ne.xml
+│   │   │   │   │   │   │   ├── values-night-v8
+│   │   │   │   │   │   │   │   └── values-night-v8.xml
+│   │   │   │   │   │   │   ├── values-nl
+│   │   │   │   │   │   │   │   └── values-nl.xml
+│   │   │   │   │   │   │   ├── values-or
+│   │   │   │   │   │   │   │   └── values-or.xml
+│   │   │   │   │   │   │   ├── values-pa
+│   │   │   │   │   │   │   │   └── values-pa.xml
+│   │   │   │   │   │   │   ├── values-pl
+│   │   │   │   │   │   │   │   └── values-pl.xml
+│   │   │   │   │   │   │   ├── values-port
+│   │   │   │   │   │   │   │   └── values-port.xml
+│   │   │   │   │   │   │   ├── values-pt
+│   │   │   │   │   │   │   │   └── values-pt.xml
+│   │   │   │   │   │   │   ├── values-pt-rBR
+│   │   │   │   │   │   │   │   └── values-pt-rBR.xml
+│   │   │   │   │   │   │   ├── values-pt-rPT
+│   │   │   │   │   │   │   │   └── values-pt-rPT.xml
+│   │   │   │   │   │   │   ├── values-ro
+│   │   │   │   │   │   │   │   └── values-ro.xml
+│   │   │   │   │   │   │   ├── values-ru
+│   │   │   │   │   │   │   │   └── values-ru.xml
+│   │   │   │   │   │   │   ├── values-si
+│   │   │   │   │   │   │   │   └── values-si.xml
+│   │   │   │   │   │   │   ├── values-sk
+│   │   │   │   │   │   │   │   └── values-sk.xml
+│   │   │   │   │   │   │   ├── values-sl
+│   │   │   │   │   │   │   │   └── values-sl.xml
+│   │   │   │   │   │   │   ├── values-sq
+│   │   │   │   │   │   │   │   └── values-sq.xml
+│   │   │   │   │   │   │   ├── values-sr
+│   │   │   │   │   │   │   │   └── values-sr.xml
+│   │   │   │   │   │   │   ├── values-sv
+│   │   │   │   │   │   │   │   └── values-sv.xml
+│   │   │   │   │   │   │   ├── values-sw
+│   │   │   │   │   │   │   │   └── values-sw.xml
+│   │   │   │   │   │   │   ├── values-sw600dp-v13
+│   │   │   │   │   │   │   │   └── values-sw600dp-v13.xml
+│   │   │   │   │   │   │   ├── values-ta
+│   │   │   │   │   │   │   │   └── values-ta.xml
+│   │   │   │   │   │   │   ├── values-te
+│   │   │   │   │   │   │   │   └── values-te.xml
+│   │   │   │   │   │   │   ├── values-th
+│   │   │   │   │   │   │   │   └── values-th.xml
+│   │   │   │   │   │   │   ├── values-tl
+│   │   │   │   │   │   │   │   └── values-tl.xml
+│   │   │   │   │   │   │   ├── values-tr
+│   │   │   │   │   │   │   │   └── values-tr.xml
+│   │   │   │   │   │   │   ├── values-uk
+│   │   │   │   │   │   │   │   └── values-uk.xml
+│   │   │   │   │   │   │   ├── values-ur
+│   │   │   │   │   │   │   │   └── values-ur.xml
+│   │   │   │   │   │   │   ├── values-uz
+│   │   │   │   │   │   │   │   └── values-uz.xml
+│   │   │   │   │   │   │   ├── values-v16
+│   │   │   │   │   │   │   │   └── values-v16.xml
+│   │   │   │   │   │   │   ├── values-v17
+│   │   │   │   │   │   │   │   └── values-v17.xml
+│   │   │   │   │   │   │   ├── values-v18
+│   │   │   │   │   │   │   │   └── values-v18.xml
+│   │   │   │   │   │   │   ├── values-v21
+│   │   │   │   │   │   │   │   └── values-v21.xml
+│   │   │   │   │   │   │   ├── values-v22
+│   │   │   │   │   │   │   │   └── values-v22.xml
+│   │   │   │   │   │   │   ├── values-v23
+│   │   │   │   │   │   │   │   └── values-v23.xml
+│   │   │   │   │   │   │   ├── values-v24
+│   │   │   │   │   │   │   │   └── values-v24.xml
+│   │   │   │   │   │   │   ├── values-v25
+│   │   │   │   │   │   │   │   └── values-v25.xml
+│   │   │   │   │   │   │   ├── values-v26
+│   │   │   │   │   │   │   │   └── values-v26.xml
+│   │   │   │   │   │   │   ├── values-v28
+│   │   │   │   │   │   │   │   └── values-v28.xml
+│   │   │   │   │   │   │   ├── values-v31
+│   │   │   │   │   │   │   │   └── values-v31.xml
+│   │   │   │   │   │   │   ├── values-v34
+│   │   │   │   │   │   │   │   └── values-v34.xml
+│   │   │   │   │   │   │   ├── values-v35
+│   │   │   │   │   │   │   │   └── values-v35.xml
+│   │   │   │   │   │   │   ├── values-vi
+│   │   │   │   │   │   │   │   └── values-vi.xml
+│   │   │   │   │   │   │   ├── values-w320dp-land-v13
+│   │   │   │   │   │   │   │   └── values-w320dp-land-v13.xml
+│   │   │   │   │   │   │   ├── values-w360dp-port-v13
+│   │   │   │   │   │   │   │   └── values-w360dp-port-v13.xml
+│   │   │   │   │   │   │   ├── values-w400dp-port-v13
+│   │   │   │   │   │   │   │   └── values-w400dp-port-v13.xml
+│   │   │   │   │   │   │   ├── values-w600dp-land-v13
+│   │   │   │   │   │   │   │   └── values-w600dp-land-v13.xml
+│   │   │   │   │   │   │   ├── values-watch-v20
+│   │   │   │   │   │   │   │   └── values-watch-v20.xml
+│   │   │   │   │   │   │   ├── values-watch-v21
+│   │   │   │   │   │   │   │   └── values-watch-v21.xml
+│   │   │   │   │   │   │   ├── values-xlarge-v4
+│   │   │   │   │   │   │   │   └── values-xlarge-v4.xml
+│   │   │   │   │   │   │   ├── values-zh-rCN
+│   │   │   │   │   │   │   │   └── values-zh-rCN.xml
+│   │   │   │   │   │   │   ├── values-zh-rHK
+│   │   │   │   │   │   │   │   └── values-zh-rHK.xml
+│   │   │   │   │   │   │   ├── values-zh-rTW
+│   │   │   │   │   │   │   │   └── values-zh-rTW.xml
+│   │   │   │   │   │   │   └── values-zu
+│   │   │   │   │   │   │       └── values-zu.xml
+│   │   │   │   │   │   ├── merger.xml
+│   │   │   │   │   │   └── stripped.dir
+│   │   │   │   │   └── packageDebugResources
+│   │   │   │   │       ├── compile-file-map.properties
+│   │   │   │   │       ├── merged.dir
+│   │   │   │   │       │   └── values
+│   │   │   │   │       │       └── values.xml
+│   │   │   │   │       ├── merger.xml
+│   │   │   │   │       └── stripped.dir
+│   │   │   │   └── mergeDebugShaders
+│   │   │   │       └── merger.xml
+│   │   │   ├── linked_resources_binary_format
+│   │   │   │   └── debug
+│   │   │   │       └── processDebugResources
+│   │   │   │           ├── linked-resources-binary-format-debug.ap_
+│   │   │   │           └── output-metadata.json
+│   │   │   ├── local_only_symbol_list
+│   │   │   │   └── debug
+│   │   │   │       └── parseDebugLocalResources
+│   │   │   │           └── R-def.txt
+│   │   │   ├── manifest_merge_blame_file
+│   │   │   │   └── debug
+│   │   │   │       └── processDebugMainManifest
+│   │   │   │           └── manifest-merger-blame-debug-report.txt
+│   │   │   ├── merged_manifest
+│   │   │   │   └── debug
+│   │   │   │       └── processDebugMainManifest
+│   │   │   │           └── AndroidManifest.xml
+│   │   │   ├── merged_manifests
+│   │   │   │   └── debug
+│   │   │   │       └── processDebugManifest
+│   │   │   │           ├── AndroidManifest.xml
+│   │   │   │           └── output-metadata.json
+│   │   │   ├── merged_res
+│   │   │   │   └── debug
+│   │   │   │       └── mergeDebugResources
+│   │   │   │           ├── drawable_rn_edit_text_material.xml.flat
+│   │   │   │           ├── mipmap-hdpi_ic_launcher.png.flat
+│   │   │   │           ├── mipmap-hdpi_ic_launcher_foreground.png.flat
+│   │   │   │           ├── mipmap-hdpi_ic_launcher_round.png.flat
+│   │   │   │           ├── mipmap-ldpi_ic_launcher.png.flat
+│   │   │   │           ├── mipmap-ldpi_ic_launcher_round.png.flat
+│   │   │   │           ├── mipmap-mdpi_ic_launcher.png.flat
+│   │   │   │           ├── mipmap-mdpi_ic_launcher_foreground.png.flat
+│   │   │   │           ├── mipmap-mdpi_ic_launcher_round.png.flat
+│   │   │   │           ├── mipmap-xhdpi_ic_launcher.png.flat
+│   │   │   │           ├── mipmap-xhdpi_ic_launcher_foreground.png.flat
+│   │   │   │           ├── mipmap-xhdpi_ic_launcher_round.png.flat
+│   │   │   │           ├── mipmap-xxhdpi_ic_launcher.png.flat
+│   │   │   │           ├── mipmap-xxhdpi_ic_launcher_foreground.png.flat
+│   │   │   │           ├── mipmap-xxhdpi_ic_launcher_round.png.flat
+│   │   │   │           ├── mipmap-xxxhdpi_ic_launcher.png.flat
+│   │   │   │           ├── mipmap-xxxhdpi_ic_launcher_foreground.png.flat
+│   │   │   │           ├── mipmap-xxxhdpi_ic_launcher_round.png.flat
+│   │   │   │           ├── values-af_values-af.arsc.flat
+│   │   │   │           ├── values-am_values-am.arsc.flat
+│   │   │   │           ├── values-ar_values-ar.arsc.flat
+│   │   │   │           ├── values-as_values-as.arsc.flat
+│   │   │   │           ├── values-az_values-az.arsc.flat
+│   │   │   │           ├── values-b+es+419_values-b+es+419.arsc.flat
+│   │   │   │           ├── values-b+sr+Latn_values-b+sr+Latn.arsc.flat
+│   │   │   │           ├── values-be_values-be.arsc.flat
+│   │   │   │           ├── values-bg_values-bg.arsc.flat
+│   │   │   │           ├── values-bn_values-bn.arsc.flat
+│   │   │   │           ├── values-bs_values-bs.arsc.flat
+│   │   │   │           ├── values-ca_values-ca.arsc.flat
+│   │   │   │           ├── values-cs_values-cs.arsc.flat
+│   │   │   │           ├── values-da_values-da.arsc.flat
+│   │   │   │           ├── values-de_values-de.arsc.flat
+│   │   │   │           ├── values-el_values-el.arsc.flat
+│   │   │   │           ├── values-en-rAU_values-en-rAU.arsc.flat
+│   │   │   │           ├── values-en-rCA_values-en-rCA.arsc.flat
+│   │   │   │           ├── values-en-rGB_values-en-rGB.arsc.flat
+│   │   │   │           ├── values-en-rIN_values-en-rIN.arsc.flat
+│   │   │   │           ├── values-en-rXC_values-en-rXC.arsc.flat
+│   │   │   │           ├── values-es-rES_values-es-rES.arsc.flat
+│   │   │   │           ├── values-es-rUS_values-es-rUS.arsc.flat
+│   │   │   │           ├── values-es_values-es.arsc.flat
+│   │   │   │           ├── values-et_values-et.arsc.flat
+│   │   │   │           ├── values-eu_values-eu.arsc.flat
+│   │   │   │           ├── values-fa_values-fa.arsc.flat
+│   │   │   │           ├── values-fi_values-fi.arsc.flat
+│   │   │   │           ├── values-fr-rCA_values-fr-rCA.arsc.flat
+│   │   │   │           ├── values-fr_values-fr.arsc.flat
+│   │   │   │           ├── values-gl_values-gl.arsc.flat
+│   │   │   │           ├── values-gu_values-gu.arsc.flat
+│   │   │   │           ├── values-h320dp-port-v13_values-h320dp-port-v13.arsc.flat
+│   │   │   │           ├── values-h360dp-land-v13_values-h360dp-land-v13.arsc.flat
+│   │   │   │           ├── values-h480dp-land-v13_values-h480dp-land-v13.arsc.flat
+│   │   │   │           ├── values-h480dp-v13_values-h480dp-v13.arsc.flat
+│   │   │   │           ├── values-h550dp-port-v13_values-h550dp-port-v13.arsc.flat
+│   │   │   │           ├── values-h720dp-v13_values-h720dp-v13.arsc.flat
+│   │   │   │           ├── values-hdpi-v4_values-hdpi-v4.arsc.flat
+│   │   │   │           ├── values-hi_values-hi.arsc.flat
+│   │   │   │           ├── values-hr_values-hr.arsc.flat
+│   │   │   │           ├── values-hu_values-hu.arsc.flat
+│   │   │   │           ├── values-hy_values-hy.arsc.flat
+│   │   │   │           ├── values-in_values-in.arsc.flat
+│   │   │   │           ├── values-is_values-is.arsc.flat
+│   │   │   │           ├── values-it_values-it.arsc.flat
+│   │   │   │           ├── values-iw_values-iw.arsc.flat
+│   │   │   │           ├── values-ja_values-ja.arsc.flat
+│   │   │   │           ├── values-ka_values-ka.arsc.flat
+│   │   │   │           ├── values-kk_values-kk.arsc.flat
+│   │   │   │           ├── values-km_values-km.arsc.flat
+│   │   │   │           ├── values-kn_values-kn.arsc.flat
+│   │   │   │           ├── values-ko_values-ko.arsc.flat
+│   │   │   │           ├── values-ky_values-ky.arsc.flat
+│   │   │   │           ├── values-land_values-land.arsc.flat
+│   │   │   │           ├── values-large-v4_values-large-v4.arsc.flat
+│   │   │   │           ├── values-ldltr-v21_values-ldltr-v21.arsc.flat
+│   │   │   │           ├── values-ldrtl-v17_values-ldrtl-v17.arsc.flat
+│   │   │   │           ├── values-lo_values-lo.arsc.flat
+│   │   │   │           ├── values-lt_values-lt.arsc.flat
+│   │   │   │           ├── values-lv_values-lv.arsc.flat
+│   │   │   │           ├── values-mk_values-mk.arsc.flat
+│   │   │   │           ├── values-ml_values-ml.arsc.flat
+│   │   │   │           ├── values-mn_values-mn.arsc.flat
+│   │   │   │           ├── values-mr_values-mr.arsc.flat
+│   │   │   │           ├── values-ms_values-ms.arsc.flat
+│   │   │   │           ├── values-my_values-my.arsc.flat
+│   │   │   │           ├── values-nb_values-nb.arsc.flat
+│   │   │   │           ├── values-ne_values-ne.arsc.flat
+│   │   │   │           ├── values-night-v8_values-night-v8.arsc.flat
+│   │   │   │           ├── values-nl_values-nl.arsc.flat
+│   │   │   │           ├── values-or_values-or.arsc.flat
+│   │   │   │           ├── values-pa_values-pa.arsc.flat
+│   │   │   │           ├── values-pl_values-pl.arsc.flat
+│   │   │   │           ├── values-port_values-port.arsc.flat
+│   │   │   │           ├── values-pt-rBR_values-pt-rBR.arsc.flat
+│   │   │   │           ├── values-pt-rPT_values-pt-rPT.arsc.flat
+│   │   │   │           ├── values-pt_values-pt.arsc.flat
+│   │   │   │           ├── values-ro_values-ro.arsc.flat
+│   │   │   │           ├── values-ru_values-ru.arsc.flat
+│   │   │   │           ├── values-si_values-si.arsc.flat
+│   │   │   │           ├── values-sk_values-sk.arsc.flat
+│   │   │   │           ├── values-sl_values-sl.arsc.flat
+│   │   │   │           ├── values-sq_values-sq.arsc.flat
+│   │   │   │           ├── values-sr_values-sr.arsc.flat
+│   │   │   │           ├── values-sv_values-sv.arsc.flat
+│   │   │   │           ├── values-sw600dp-v13_values-sw600dp-v13.arsc.flat
+│   │   │   │           ├── values-sw_values-sw.arsc.flat
+│   │   │   │           ├── values-ta_values-ta.arsc.flat
+│   │   │   │           ├── values-te_values-te.arsc.flat
+│   │   │   │           ├── values-th_values-th.arsc.flat
+│   │   │   │           ├── values-tl_values-tl.arsc.flat
+│   │   │   │           ├── values-tr_values-tr.arsc.flat
+│   │   │   │           ├── values-uk_values-uk.arsc.flat
+│   │   │   │           ├── values-ur_values-ur.arsc.flat
+│   │   │   │           ├── values-uz_values-uz.arsc.flat
+│   │   │   │           ├── values-v16_values-v16.arsc.flat
+│   │   │   │           ├── values-v17_values-v17.arsc.flat
+│   │   │   │           ├── values-v18_values-v18.arsc.flat
+│   │   │   │           ├── values-v21_values-v21.arsc.flat
+│   │   │   │           ├── values-v22_values-v22.arsc.flat
+│   │   │   │           ├── values-v23_values-v23.arsc.flat
+│   │   │   │           ├── values-v24_values-v24.arsc.flat
+│   │   │   │           ├── values-v25_values-v25.arsc.flat
+│   │   │   │           ├── values-v26_values-v26.arsc.flat
+│   │   │   │           ├── values-v28_values-v28.arsc.flat
+│   │   │   │           ├── values-v31_values-v31.arsc.flat
+│   │   │   │           ├── values-v34_values-v34.arsc.flat
+│   │   │   │           ├── values-v35_values-v35.arsc.flat
+│   │   │   │           ├── values-vi_values-vi.arsc.flat
+│   │   │   │           ├── values-w320dp-land-v13_values-w320dp-land-v13.arsc.flat
+│   │   │   │           ├── values-w360dp-port-v13_values-w360dp-port-v13.arsc.flat
+│   │   │   │           ├── values-w400dp-port-v13_values-w400dp-port-v13.arsc.flat
+│   │   │   │           ├── values-w600dp-land-v13_values-w600dp-land-v13.arsc.flat
+│   │   │   │           ├── values-watch-v20_values-watch-v20.arsc.flat
+│   │   │   │           ├── values-watch-v21_values-watch-v21.arsc.flat
+│   │   │   │           ├── values-xlarge-v4_values-xlarge-v4.arsc.flat
+│   │   │   │           ├── values-zh-rCN_values-zh-rCN.arsc.flat
+│   │   │   │           ├── values-zh-rHK_values-zh-rHK.arsc.flat
+│   │   │   │           ├── values-zh-rTW_values-zh-rTW.arsc.flat
+│   │   │   │           ├── values-zu_values-zu.arsc.flat
+│   │   │   │           └── values_values.arsc.flat
+│   │   │   ├── merged_res_blame_folder
+│   │   │   │   └── debug
+│   │   │   │       └── mergeDebugResources
+│   │   │   │           └── out
+│   │   │   │               ├── multi-v2
+│   │   │   │               │   ├── mergeDebugResources.json
+│   │   │   │               │   ├── values-af.json
+│   │   │   │               │   ├── values-am.json
+│   │   │   │               │   ├── values-ar.json
+│   │   │   │               │   ├── values-as.json
+│   │   │   │               │   ├── values-az.json
+│   │   │   │               │   ├── values-b+es+419.json
+│   │   │   │               │   ├── values-b+sr+Latn.json
+│   │   │   │               │   ├── values-be.json
+│   │   │   │               │   ├── values-bg.json
+│   │   │   │               │   ├── values-bn.json
+│   │   │   │               │   ├── values-bs.json
+│   │   │   │               │   ├── values-ca.json
+│   │   │   │               │   ├── values-cs.json
+│   │   │   │               │   ├── values-da.json
+│   │   │   │               │   ├── values-de.json
+│   │   │   │               │   ├── values-el.json
+│   │   │   │               │   ├── values-en-rAU.json
+│   │   │   │               │   ├── values-en-rCA.json
+│   │   │   │               │   ├── values-en-rGB.json
+│   │   │   │               │   ├── values-en-rIN.json
+│   │   │   │               │   ├── values-en-rXC.json
+│   │   │   │               │   ├── values-es-rES.json
+│   │   │   │               │   ├── values-es-rUS.json
+│   │   │   │               │   ├── values-es.json
+│   │   │   │               │   ├── values-et.json
+│   │   │   │               │   ├── values-eu.json
+│   │   │   │               │   ├── values-fa.json
+│   │   │   │               │   ├── values-fi.json
+│   │   │   │               │   ├── values-fr-rCA.json
+│   │   │   │               │   ├── values-fr.json
+│   │   │   │               │   ├── values-gl.json
+│   │   │   │               │   ├── values-gu.json
+│   │   │   │               │   ├── values-h320dp-port-v13.json
+│   │   │   │               │   ├── values-h360dp-land-v13.json
+│   │   │   │               │   ├── values-h480dp-land-v13.json
+│   │   │   │               │   ├── values-h480dp-v13.json
+│   │   │   │               │   ├── values-h550dp-port-v13.json
+│   │   │   │               │   ├── values-h720dp-v13.json
+│   │   │   │               │   ├── values-hdpi-v4.json
+│   │   │   │               │   ├── values-hi.json
+│   │   │   │               │   ├── values-hr.json
+│   │   │   │               │   ├── values-hu.json
+│   │   │   │               │   ├── values-hy.json
+│   │   │   │               │   ├── values-in.json
+│   │   │   │               │   ├── values-is.json
+│   │   │   │               │   ├── values-it.json
+│   │   │   │               │   ├── values-iw.json
+│   │   │   │               │   ├── values-ja.json
+│   │   │   │               │   ├── values-ka.json
+│   │   │   │               │   ├── values-kk.json
+│   │   │   │               │   ├── values-km.json
+│   │   │   │               │   ├── values-kn.json
+│   │   │   │               │   ├── values-ko.json
+│   │   │   │               │   ├── values-ky.json
+│   │   │   │               │   ├── values-land.json
+│   │   │   │               │   ├── values-large-v4.json
+│   │   │   │               │   ├── values-ldltr-v21.json
+│   │   │   │               │   ├── values-ldrtl-v17.json
+│   │   │   │               │   ├── values-lo.json
+│   │   │   │               │   ├── values-lt.json
+│   │   │   │               │   ├── values-lv.json
+│   │   │   │               │   ├── values-mk.json
+│   │   │   │               │   ├── values-ml.json
+│   │   │   │               │   ├── values-mn.json
+│   │   │   │               │   ├── values-mr.json
+│   │   │   │               │   ├── values-ms.json
+│   │   │   │               │   ├── values-my.json
+│   │   │   │               │   ├── values-nb.json
+│   │   │   │               │   ├── values-ne.json
+│   │   │   │               │   ├── values-night-v8.json
+│   │   │   │               │   ├── values-nl.json
+│   │   │   │               │   ├── values-or.json
+│   │   │   │               │   ├── values-pa.json
+│   │   │   │               │   ├── values-pl.json
+│   │   │   │               │   ├── values-port.json
+│   │   │   │               │   ├── values-pt-rBR.json
+│   │   │   │               │   ├── values-pt-rPT.json
+│   │   │   │               │   ├── values-pt.json
+│   │   │   │               │   ├── values-ro.json
+│   │   │   │               │   ├── values-ru.json
+│   │   │   │               │   ├── values-si.json
+│   │   │   │               │   ├── values-sk.json
+│   │   │   │               │   ├── values-sl.json
+│   │   │   │               │   ├── values-sq.json
+│   │   │   │               │   ├── values-sr.json
+│   │   │   │               │   ├── values-sv.json
+│   │   │   │               │   ├── values-sw.json
+│   │   │   │               │   ├── values-sw600dp-v13.json
+│   │   │   │               │   ├── values-ta.json
+│   │   │   │               │   ├── values-te.json
+│   │   │   │               │   ├── values-th.json
+│   │   │   │               │   ├── values-tl.json
+│   │   │   │               │   ├── values-tr.json
+│   │   │   │               │   ├── values-uk.json
+│   │   │   │               │   ├── values-ur.json
+│   │   │   │               │   ├── values-uz.json
+│   │   │   │               │   ├── values-v16.json
+│   │   │   │               │   ├── values-v17.json
+│   │   │   │               │   ├── values-v18.json
+│   │   │   │               │   ├── values-v21.json
+│   │   │   │               │   ├── values-v22.json
+│   │   │   │               │   ├── values-v23.json
+│   │   │   │               │   ├── values-v24.json
+│   │   │   │               │   ├── values-v25.json
+│   │   │   │               │   ├── values-v26.json
+│   │   │   │               │   ├── values-v28.json
+│   │   │   │               │   ├── values-v31.json
+│   │   │   │               │   ├── values-v34.json
+│   │   │   │               │   ├── values-v35.json
+│   │   │   │               │   ├── values-vi.json
+│   │   │   │               │   ├── values-w320dp-land-v13.json
+│   │   │   │               │   ├── values-w360dp-port-v13.json
+│   │   │   │               │   ├── values-w400dp-port-v13.json
+│   │   │   │               │   ├── values-w600dp-land-v13.json
+│   │   │   │               │   ├── values-watch-v20.json
+│   │   │   │               │   ├── values-watch-v21.json
+│   │   │   │               │   ├── values-xlarge-v4.json
+│   │   │   │               │   ├── values-zh-rCN.json
+│   │   │   │               │   ├── values-zh-rHK.json
+│   │   │   │               │   ├── values-zh-rTW.json
+│   │   │   │               │   ├── values-zu.json
+│   │   │   │               │   └── values.json
+│   │   │   │               └── single
+│   │   │   │                   └── mergeDebugResources.json
+│   │   │   ├── merged_shaders
+│   │   │   │   └── debug
+│   │   │   │       └── mergeDebugShaders
+│   │   │   │           └── out
+│   │   │   ├── navigation_json
+│   │   │   │   └── debug
+│   │   │   │       └── extractDeepLinksDebug
+│   │   │   │           └── navigation.json
+│   │   │   ├── nested_resources_validation_report
+│   │   │   │   └── debug
+│   │   │   │       └── generateDebugResources
+│   │   │   │           └── nestedResourcesValidationReport.txt
+│   │   │   ├── packaged_manifests
+│   │   │   │   └── debug
+│   │   │   │       └── processDebugManifestForPackage
+│   │   │   │           ├── AndroidManifest.xml
+│   │   │   │           └── output-metadata.json
+│   │   │   ├── packaged_res
+│   │   │   │   └── debug
+│   │   │   │       └── packageDebugResources
+│   │   │   │           ├── drawable
+│   │   │   │           │   └── rn_edit_text_material.xml
+│   │   │   │           ├── mipmap-hdpi-v4
+│   │   │   │           │   ├── ic_launcher.png
+│   │   │   │           │   ├── ic_launcher_foreground.png
+│   │   │   │           │   └── ic_launcher_round.png
+│   │   │   │           ├── mipmap-ldpi-v4
+│   │   │   │           │   ├── ic_launcher.png
+│   │   │   │           │   └── ic_launcher_round.png
+│   │   │   │           ├── mipmap-mdpi-v4
+│   │   │   │           │   ├── ic_launcher.png
+│   │   │   │           │   ├── ic_launcher_foreground.png
+│   │   │   │           │   └── ic_launcher_round.png
+│   │   │   │           ├── mipmap-xhdpi-v4
+│   │   │   │           │   ├── ic_launcher.png
+│   │   │   │           │   ├── ic_launcher_foreground.png
+│   │   │   │           │   └── ic_launcher_round.png
+│   │   │   │           ├── mipmap-xxhdpi-v4
+│   │   │   │           │   ├── ic_launcher.png
+│   │   │   │           │   ├── ic_launcher_foreground.png
+│   │   │   │           │   └── ic_launcher_round.png
+│   │   │   │           ├── mipmap-xxxhdpi-v4
+│   │   │   │           │   ├── ic_launcher.png
+│   │   │   │           │   ├── ic_launcher_foreground.png
+│   │   │   │           │   └── ic_launcher_round.png
+│   │   │   │           └── values
+│   │   │   │               └── values.xml
+│   │   │   ├── runtime_symbol_list
+│   │   │   │   └── debug
+│   │   │   │       └── processDebugResources
+│   │   │   │           └── R.txt
+│   │   │   ├── source_set_path_map
+│   │   │   │   └── debug
+│   │   │   │       └── mapDebugSourceSetPaths
+│   │   │   │           └── file-map.txt
+│   │   │   ├── stable_resource_ids_file
+│   │   │   │   └── debug
+│   │   │   │       └── processDebugResources
+│   │   │   │           └── stableIds.txt
+│   │   │   └── symbol_list_with_package_name
+│   │   │       └── debug
+│   │   │           └── processDebugResources
+│   │   │               └── package-aware-r.txt
+│   │   └── outputs
+│   │       ├── apk
+│   │       │   └── debug
+│   │       │       └── app-debug.apk
+│   │       └── logs
+│   │           └── manifest-merger-debug-report.txt
+│   ├── build.gradle
+│   ├── debug.keystore
+│   ├── google-services.json
+│   ├── my-release-key.keystore
+│   ├── proguard-rules.pro
+│   └── src
+│       └── main
+│           ├── AndroidManifest.xml
+│           ├── assets
+│           │   └── channels.m3u8
+│           ├── java
+│           │   └── com
+│           │       └── iptv
+│           │           ├── MainActivity.kt
+│           │           ├── MainApplication.kt
+│           │           ├── OrientationModule.kt
+│           │           ├── OrientationPackage.kt
+│           │           ├── RootDetectionModule.kt
+│           │           ├── RootDetectionPackage.kt
+│           │           └── sslpinning
+│           │               ├── PinnedOkHttpClientFactory.kt
+│           │               ├── SslPinningModule.kt
+│           │               └── SslPinningPackage.kt
+│           └── res
+│               ├── drawable
+│               │   └── rn_edit_text_material.xml
+│               ├── mipmap-hdpi
+│               │   ├── ic_launcher.png
+│               │   ├── ic_launcher_foreground.png
+│               │   └── ic_launcher_round.png
+│               ├── mipmap-ldpi
+│               │   ├── ic_launcher.png
+│               │   └── ic_launcher_round.png
+│               ├── mipmap-mdpi
+│               │   ├── ic_launcher.png
+│               │   ├── ic_launcher_foreground.png
+│               │   └── ic_launcher_round.png
+│               ├── mipmap-xhdpi
+│               │   ├── ic_launcher.png
+│               │   ├── ic_launcher_foreground.png
+│               │   └── ic_launcher_round.png
+│               ├── mipmap-xxhdpi
+│               │   ├── ic_launcher.png
+│               │   ├── ic_launcher_foreground.png
+│               │   └── ic_launcher_round.png
+│               ├── mipmap-xxxhdpi
+│               │   ├── ic_launcher.png
+│               │   ├── ic_launcher_foreground.png
+│               │   └── ic_launcher_round.png
+│               └── values
+│                   ├── strings.xml
+│                   └── styles.xml
+├── build
+│   ├── generated
+│   │   └── autolinking
+│   │       ├── autolinking.json
+│   │       ├── package-lock.json.sha
+│   │       └── package.json.sha
+│   └── reports
+│       └── problems
+│           └── problems-report.html
+├── build.gradle
+├── gradle
+│   └── wrapper
+│       ├── gradle-wrapper.jar
+│       └── gradle-wrapper.properties
+├── gradle.properties
+├── gradlew
+├── gradlew.bat
+└── settings.gradle

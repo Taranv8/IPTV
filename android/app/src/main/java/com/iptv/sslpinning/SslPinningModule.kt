@@ -214,7 +214,7 @@ PinnedOkHttpClientFactory.updateClient(pinnedClient!!)
     // Private helpers
     // ─────────────────────────────────────────────────────────────────────────
 
-  private fun buildPinnedClient(pins: Set<String>): OkHttpClient {
+ private fun buildPinnedClient(pins: Set<String>): OkHttpClient {
     val normalisedPins = pins.map { if (it.startsWith("sha256/")) it else "sha256/$it" }
 
     val pinnerBuilder = CertificatePinner.Builder()
@@ -227,8 +227,9 @@ PinnedOkHttpClientFactory.updateClient(pinnedClient!!)
     val sslContext = SSLContext.getInstance("TLS")
     sslContext.init(null, arrayOf(trustManager), java.security.SecureRandom())
 
-    // ✅ KEY FIX: start from RN's builder here too
-    return OkHttpClientProvider.createClientBuilder()
+    // ✅ Plain builder here — OkHttpClientProvider belongs only in
+    // PinnedOkHttpClientFactory, not here
+    return OkHttpClient.Builder()
         .certificatePinner(pinnerBuilder.build())
         .sslSocketFactory(sslContext.socketFactory, trustManager)
         .connectTimeout(15, TimeUnit.SECONDS)
