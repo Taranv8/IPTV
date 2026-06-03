@@ -7,7 +7,7 @@
 //   4. SSL pin setup        (sslPinningService)             → sends RC pins to native
 //   5. Render app
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   BackHandler,
   Linking,
@@ -18,6 +18,7 @@ import {
   TouchableOpacity,
   View,
   ActivityIndicator,
+  AppState as RNAppState,
 } from 'react-native';
 import { RootNavigator } from './src/navigation/RootNavigator';
 import { ChannelProvider } from './src/context/ChannelContext';
@@ -28,10 +29,13 @@ import { performRootCheck, killApp } from './src/services/rootDetectionService';
 import {
   initSslPinning,
   detectMitmAndTools,
+  startPinWatch,
+  stopPinWatch,
+  onMitmKill,
   formatMitmReasons,
   getDetectedAppNames,
-  type MitmDetectionResult,
-} from './src/services/sslPinningService';
+  MitmDetectionResult,
+} from './services/sslPinningService';
 
 // ─── Global error handler ─────────────────────────────────────────────────────
 
@@ -43,7 +47,7 @@ if (__DEV__ === false) {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type AppState = 'checking' | 'blocked' | 'mitm_warning' | 'loading' | 'ready';
+type AppStatus = 'checking' | 'blocked' | 'mitm_warning' | 'loading' | 'ready';
 
 interface BlockedInfo {
   title: string;
@@ -52,21 +56,21 @@ interface BlockedInfo {
   closing: string;
 }
 
-// ─── Root detection labels (unchanged) ───────────────────────────────────────
+// ─── Root detection labels ────────────────────────────────────────────────────
 
 const ROOT_REASON_LABELS: Record<string, string> = {
-  ROOT_FILES:              'Root binaries or Magisk files found on device',
-  ROOT_PACKAGES:           'Root management app detected',
-  SU_EXECUTABLE:           'su binary is accessible',
-  BUILD_PROPS:             'System build properties indicate modified OS',
-  WRITABLE_SYSTEM:         'System partition is writable',
-  XPOSED_FRAMEWORK:        'Xposed or Substrate hook framework detected',
-  FRIDA_DETECTED:          'Frida dynamic instrumentation detected',
-  PROC_MAPS_TAMPERING:     'Suspicious library found in process memory',
-  DEBUGGER_ATTACHED:       'Native debugger is attached to the process',
-  SIGNATURE_TAMPERED:      'App signing certificate mismatch',
-  NATIVE_MODULE_MISSING:   'Security module could not be loaded',
-  NATIVE_CHECK_EXCEPTION:  'Security check encountered an unexpected error',
+  ROOT_FILES:             'Root binaries or Magisk files found on device',
+  ROOT_PACKAGES:          'Root management app detected',
+  SU_EXECUTABLE:          'su binary is accessible',
+  BUILD_PROPS:            'System build properties indicate modified OS',
+  WRITABLE_SYSTEM:        'System partition is writable',
+  XPOSED_FRAMEWORK:       'Xposed or Substrate hook framework detected',
+  FRIDA_DETECTED:         'Frida dynamic instrumentation detected',
+  PROC_MAPS_TAMPERING:    'Suspicious library found in process memory',
+  DEBUGGER_ATTACHED:      'Native debugger is attached to the process',
+  SIGNATURE_TAMPERED:     'App signing certificate mismatch',
+  NATIVE_MODULE_MISSING:  'Security module could not be loaded',
+  NATIVE_CHECK_EXCEPTION: 'Security check encountered an unexpected error',
 };
 
 function formatRootReasons(reasons: string[]): string {
@@ -88,34 +92,48 @@ function buildMitmBlockedInfo(result: MitmDetectionResult): BlockedInfo {
       'Please remove it and relaunch the app.';
 
   return {
-    title:    'Security Risk Detected',
+    title:   'Security Risk Detected',
     subtitle,
-    reasons:  formatMitmReasons(result.reasons),
-    closing:  'The app will close for your security.',
+    reasons: formatMitmReasons(result.reasons),
+    closing: 'The app will close for your security.',
   };
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function App() {
-  const [appState, setAppState]       = useState<AppState>('checking');
+  const [appStatus, setAppStatus]     = useState<AppStatus>('checking');
   const [blockedInfo, setBlockedInfo] = useState<BlockedInfo | null>(null);
 
   // Disable hardware back while on block/warning screens
   useEffect(() => {
-    if (appState === 'checking' || appState === 'blocked' || appState === 'mitm_warning') {
+    if (
+      appStatus === 'checking' ||
+      appStatus === 'blocked'  ||
+      appStatus === 'mitm_warning'
+    ) {
       const sub = BackHandler.addEventListener('hardwareBackPress', () => true);
       return () => sub.remove();
     }
-  }, [appState]);
+  }, [appStatus]);
 
   // ── Main bootstrap ──────────────────────────────────────────────────────────
   useEffect(() => {
     let mounted = true;
 
+    // ── FIX: declared here so the cleanup return below can always reach it ──
+    let appStateSub: ReturnType<typeof RNAppState.addEventListener> | null = null;
+
+    // Register the MITM kill handler immediately — before any async work —
+    // so it fires even if a kill event arrives during bootstrap.
+    const unsubMitm = onMitmKill((reason: string) => {
+      console.warn('[Security] MITM kill:', reason);
+      // Clear your stream URLs, auth tokens, Redux state, etc. here.
+    });
+
     const bootstrap = async () => {
 
-      // ── Step 1: Root / tamper check ─────────────────────────────────────
+      // ── Step 1: Root / tamper check ───────────────────────────────────────
       try {
         const rootResult = await performRootCheck();
         if (rootResult.rooted) {
@@ -126,7 +144,7 @@ export default function App() {
             reasons:  formatRootReasons(rootResult.reasons ?? []),
             closing:  'The app will now close.',
           });
-          setAppState('blocked');
+          setAppStatus('blocked');
           setTimeout(() => killApp(), 1500);
           return;
         }
@@ -138,30 +156,28 @@ export default function App() {
           reasons:  'Security check encountered an unexpected error.',
           closing:  'The app will now close.',
         });
-        setAppState('blocked');
+        setAppStatus('blocked');
         setTimeout(() => killApp(), 1500);
         return;
       }
 
-      // ── Step 2: MITM / instrumentation-tool detection ───────────────────
+      // ── Step 2: MITM / instrumentation-tool detection ─────────────────────
       try {
         const mitmResult = await detectMitmAndTools();
         if (mitmResult.detected) {
           if (!mounted) return;
           setBlockedInfo(buildMitmBlockedInfo(mitmResult));
-          setAppState('mitm_warning');
-          // Give the user time to read the message before killing
+          setAppStatus('mitm_warning');
           setTimeout(() => killApp(), 6000);
           return;
         }
       } catch {
-        // Detection error is non-fatal; log and continue
         console.warn('[App] MITM detection error — continuing');
       }
 
-      // ── Step 3: Remote Config fetch ─────────────────────────────────────
+      // ── Step 3: Remote Config fetch ───────────────────────────────────────
       if (!mounted) return;
-      setAppState('loading');
+      setAppStatus('loading');
 
       try {
         await initRemoteConfig();
@@ -169,82 +185,100 @@ export default function App() {
         // initRemoteConfig is contractually non-throwing; guarded anyway
       }
 
-      // ── Step 4: SSL pinning setup ───────────────────────────────────────
+      // ── Step 4: SSL pinning setup ─────────────────────────────────────────
       try {
-       const pinResult = await initSslPinning();
-if (!pinResult.success) {
-  if (__DEV__) {
-    console.warn('[App] SSL pinning setup failed:', pinResult.error);
-  } else {
-    // In production, a pin mismatch means active MITM — block the app
-    setBlockedInfo({
-      title: 'Connection Security Error',
-      subtitle: 'A secure connection to our servers could not be verified. This may indicate a network interception attempt.',
-      reasons: pinResult.error ?? 'Certificate pin mismatch',
-      closing: 'The app will now close.',
-    });
-    setAppState('blocked');
-    setTimeout(() => killApp(), 2000);
-    return;
-  }
-}
+        const pinResult = await initSslPinning();
+        if (!pinResult.success) {
+          if (__DEV__) {
+            console.warn('[App] SSL pinning setup failed:', pinResult.error);
+          } else {
+            if (!mounted) return;
+            setBlockedInfo({
+              title:    'Connection Security Error',
+              subtitle: 'A secure connection to our servers could not be verified. ' +
+                        'This may indicate a network interception attempt.',
+              reasons:  pinResult.error ?? 'Certificate pin mismatch',
+              closing:  'The app will now close.',
+            });
+            setAppStatus('blocked');
+            setTimeout(() => killApp(), 2000);
+            return;
+          }
+        }
       } catch {
         console.warn('[App] SSL pinning threw unexpectedly');
       }
 
-      // ── Ready ───────────────────────────────────────────────────────────
+      // ── Step 5: Start WebSocket pin-watch ─────────────────────────────────
+      // openSocket() fires immediately — TLS handshake + pin check happen now.
+      // appStateSub is declared above so the cleanup return can remove it.
       if (!mounted) return;
-      setAppState('ready');
+      startPinWatch();
+
+      appStateSub = RNAppState.addEventListener('change', (state) => {
+        if (state === 'active') startPinWatch();
+        else                    stopPinWatch();
+      });
+
+      setAppStatus('ready');
     };
 
     bootstrap();
-    return () => { mounted = false; };
+
+    // ── Cleanup: runs when the component unmounts ─────────────────────────────
+    // appStateSub is reachable here because it was declared in this scope,
+    // not inside the async bootstrap function.
+    return () => {
+      mounted = false;
+      unsubMitm();
+      stopPinWatch();
+      appStateSub?.remove();
+    };
   }, []);
 
-  // Add this entire new useEffect after the existing bootstrap useEffect
-useEffect(() => {
-  if (appState !== 'ready') return;
+  // ── Continuous MITM poll while app is running ─────────────────────────────
+  useEffect(() => {
+    if (appStatus !== 'ready') return;
 
-  let pollActive = true;
+    let pollActive = true;
 
-  const poll = async () => {
-    while (pollActive) {
-await new Promise(resolve =>
-  setTimeout(() => resolve(undefined), 4000)
-);
-      if (!pollActive) break;
-      try {
-        const mitmResult = await detectMitmAndTools();
-        if (mitmResult.detected) {
-          setBlockedInfo(buildMitmBlockedInfo(mitmResult));
-          setAppState('mitm_warning');
-          setTimeout(() => killApp(), 3000);
-          pollActive = false;
+    const poll = async () => {
+      while (pollActive) {
+        await new Promise<void>(resolve => setTimeout(resolve, 4000));
+        if (!pollActive) break;
+        try {
+          const mitmResult = await detectMitmAndTools();
+          if (mitmResult.detected) {
+            setBlockedInfo(buildMitmBlockedInfo(mitmResult));
+            setAppStatus('mitm_warning');
+            setTimeout(() => killApp(), 3000);
+            pollActive = false;
+          }
+        } catch {
+          // non-fatal
         }
-      } catch {
-        // non-fatal
       }
-    }
-  };
+    };
 
-  poll();
-  return () => { pollActive = false; };
-}, [appState]);
-  // ── Render: loading ─────────────────────────────────────────────────────────
-  if (appState === 'checking' || appState === 'loading') {
+    poll();
+    return () => { pollActive = false; };
+  }, [appStatus]);
+
+  // ── Render: loading ───────────────────────────────────────────────────────
+  if (appStatus === 'checking' || appStatus === 'loading') {
     return (
       <View style={styles.loader}>
         <StatusBar barStyle="light-content" backgroundColor="#000" />
         <ActivityIndicator size="large" color="#ffffff" />
         <Text style={styles.loaderText}>
-          {appState === 'checking' ? 'Checking device security…' : 'Loading…'}
+          {appStatus === 'checking' ? 'Checking device security…' : 'Loading…'}
         </Text>
       </View>
     );
   }
 
-  // ── Render: blocked (root / fatal error) ────────────────────────────────────
-  if (appState === 'blocked' && blockedInfo) {
+  // ── Render: blocked (root / fatal error) ──────────────────────────────────
+  if (appStatus === 'blocked' && blockedInfo) {
     return (
       <View style={styles.blocked}>
         <StatusBar barStyle="light-content" backgroundColor="#0a0a0a" />
@@ -256,8 +290,8 @@ await new Promise(resolve =>
     );
   }
 
-  // ── Render: MITM warning (with app list + uninstall deep-link) ──────────────
-  if (appState === 'mitm_warning' && blockedInfo) {
+  // ── Render: MITM warning ──────────────────────────────────────────────────
+  if (appStatus === 'mitm_warning' && blockedInfo) {
     return (
       <View style={styles.mitmWarning}>
         <StatusBar barStyle="light-content" backgroundColor="#0d0d0d" />
@@ -272,8 +306,6 @@ await new Promise(resolve =>
             <Text style={styles.mitmReasonsLabel}>Detection details</Text>
             <Text style={styles.mitmReasons}>{blockedInfo.reasons}</Text>
           </View>
-
-          {/* Deep-link to Android app settings for easy uninstall */}
           <TouchableOpacity
             style={styles.mitmButton}
             onPress={() => Linking.openURL('market://search?q=http+canary+proxy')}
@@ -281,14 +313,13 @@ await new Promise(resolve =>
           >
             <Text style={styles.mitmButtonText}>Open App Settings to Uninstall</Text>
           </TouchableOpacity>
-
           <Text style={styles.mitmClosing}>{blockedInfo.closing}</Text>
         </ScrollView>
       </View>
     );
   }
 
-  // ── Render: ready ────────────────────────────────────────────────────────────
+  // ── Render: ready ─────────────────────────────────────────────────────────
   return (
     <ErrorBoundary>
       <SettingsProvider>
@@ -304,7 +335,6 @@ await new Promise(resolve =>
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  // Loading
   loader: {
     flex: 1,
     justifyContent: 'center',
@@ -316,8 +346,6 @@ const styles = StyleSheet.create({
     color: '#888',
     fontSize: 13,
   },
-
-  // Generic block screen
   blocked: {
     flex: 1,
     justifyContent: 'center',
@@ -357,8 +385,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontWeight: '500',
   },
-
-  // MITM warning screen
   mitmWarning: {
     flex: 1,
     backgroundColor: '#0d0d0d',

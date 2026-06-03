@@ -3,6 +3,12 @@ package com.iptv.sslpinning
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
+
+import android.os.Handler
+import android.os.Looper
+import android.os.Process
+import com.facebook.react.modules.core.DeviceEventManagerModule
+import okhttp3.Response as OkResponse
 import com.facebook.react.bridge.*
 import okhttp3.*
 import java.io.File
@@ -64,6 +70,9 @@ class SslPinningModule(private val reactContext: ReactApplicationContext) :
 
         // TCP ports commonly used by interception proxies
         private val KNOWN_PROXY_PORTS = listOf(8080, 8888, 9090, 10800, 1234, 4444, 8118)
+
+private const val PING_INTERVAL_SEC = 10L
+private const val MAX_RECONNECT_MS  = 30_000L
     }
 
     // Live pin set — filled by JS via setPins()
@@ -73,7 +82,12 @@ class SslPinningModule(private val reactContext: ReactApplicationContext) :
     // Cached OkHttpClient rebuilt when pins change
     @Volatile
     private var pinnedClient: OkHttpClient? = null
-
+@Volatile private var currentWsUrl: String = ""
+@Volatile private var watchSocket: WebSocket? = null
+@Volatile private var watchClient: OkHttpClient? = null
+@Volatile private var pinWatchActive = false
+private var reconnectDelayMs = 1_000L
+private val reconnectHandler = Handler(Looper.getMainLooper())
     override fun getName() = "SslPinningModule"
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -209,7 +223,85 @@ PinnedOkHttpClientFactory.updateClient(pinnedClient!!)
             promise.reject("DETECTION_ERROR", e.message, e)
         }
     }
+@ReactMethod
+fun startPinWatch(wsUrl: String, promise: Promise) {
+    val base = pinnedClient
+    if (base == null) {
+        promise.reject("PINS_NOT_SET", "Call setPins() before startPinWatch()")
+        return
+    }
+    if (wsUrl.isBlank()) {
+        promise.reject("INVALID_URL", "wsUrl must not be empty")
+        return
+    }
+    stopPinWatchInternal()
+    currentWsUrl = wsUrl
+    watchClient = base.newBuilder()
+        .pingInterval(PING_INTERVAL_SEC, TimeUnit.SECONDS)
+        .build()
+    pinWatchActive = true
+    reconnectDelayMs = 1_000L
+    openSocket()
+    promise.resolve(true)
+}
 
+@ReactMethod
+fun stopPinWatch(promise: Promise) {
+    stopPinWatchInternal()
+    promise.resolve(true)
+}
+
+private fun stopPinWatchInternal() {
+    pinWatchActive = false
+    reconnectHandler.removeCallbacksAndMessages(null)
+    watchSocket?.close(1000, "paused")
+    watchSocket = null
+}
+
+private fun openSocket() {
+    val client = watchClient ?: return
+    if (currentWsUrl.isBlank()) return
+    client.newWebSocket(
+        Request.Builder().url(currentWsUrl).build(),
+        PinWatchListener()
+    )
+}
+
+private inner class PinWatchListener : WebSocketListener() {
+    override fun onOpen(webSocket: WebSocket, response: OkResponse) {
+        watchSocket = webSocket
+        reconnectDelayMs = 1_000L
+    }
+    override fun onFailure(webSocket: WebSocket, t: Throwable, response: OkResponse?) {
+        watchSocket = null
+        if (t is SSLPeerUnverifiedException) {
+            killForMitm(t.message ?: "pin mismatch")
+        } else {
+            if (pinWatchActive) scheduleReconnect()
+        }
+    }
+    override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+        webSocket.close(1000, null)
+        watchSocket = null
+        if (pinWatchActive) scheduleReconnect()
+    }
+}
+
+private fun scheduleReconnect() {
+    reconnectHandler.postDelayed({ if (pinWatchActive) openSocket() }, reconnectDelayMs)
+    reconnectDelayMs = minOf(reconnectDelayMs * 2, MAX_RECONNECT_MS)
+}
+
+private fun killForMitm(reason: String) {
+    try {
+        reactContext
+            .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+            .emit("SslPinMismatchDetected", reason)
+    } catch (_: Exception) {}
+    Handler(Looper.getMainLooper()).postDelayed({
+        Process.killProcess(Process.myPid())
+    }, 150)
+}
     // ─────────────────────────────────────────────────────────────────────────
     // Private helpers
     // ─────────────────────────────────────────────────────────────────────────

@@ -4,7 +4,6 @@ import com.facebook.react.modules.network.OkHttpClientFactory
 import com.facebook.react.modules.network.OkHttpClientProvider
 import okhttp3.OkHttpClient
 import okhttp3.HttpUrl
-import javax.net.ssl.SSLPeerUnverifiedException
 import java.util.concurrent.TimeUnit
 
 class PinnedOkHttpClientFactory : OkHttpClientFactory {
@@ -14,15 +13,8 @@ class PinnedOkHttpClientFactory : OkHttpClientFactory {
         @Volatile
         private var activeClient: OkHttpClient? = null
 
-      fun updateClient(pinnedClient: OkHttpClient) {
-    // Re-wrap the pinned client on RN's base builder so CookieJarContainer
-    // is preserved. SslPinningModule builds with plain OkHttpClient.Builder()
-    // intentionally — the RN wrapping happens here and only here.
+    fun updateClient(pinnedClient: OkHttpClient) {
     activeClient = OkHttpClientProvider.createClientBuilder()
-        .sslSocketFactory(
-            pinnedClient.sslSocketFactory,
-            pinnedClient.x509TrustManager!!
-        )
         .certificatePinner(pinnedClient.certificatePinner)
         .connectTimeout(pinnedClient.connectTimeoutMillis.toLong(), TimeUnit.MILLISECONDS)
         .readTimeout(pinnedClient.readTimeoutMillis.toLong(), TimeUnit.MILLISECONDS)

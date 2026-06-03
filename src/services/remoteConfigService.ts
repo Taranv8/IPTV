@@ -31,10 +31,10 @@ export async function initRemoteConfig(): Promise<void> {
 
     // 1. Defaults — ssl_pins defaults to "[]" so pinning is inactive
     //    if RC is unreachable on first launch.
-    await rc.setDefaults({
-      ..._RC_DEFAULTS,
-      ssl_pins: '[]',   // <── new key; value is a JSON array string
-    });
+  await rc.setDefaults({
+  ..._RC_DEFAULTS,
+  ssl_pins: '[]',
+});
 
     // 2. Fetch interval
     await rc.setConfigSettings({
