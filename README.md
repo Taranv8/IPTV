@@ -1,97 +1,213 @@
-This is a new [**React Native**](https://reactnative.dev) project, bootstrapped using [`@react-native-community/cli`](https://github.com/react-native-community/cli).
+# 📺 IPTV Player
 
-# Getting Started
+A feature-rich, cross-platform IPTV streaming application built with **React Native**, designed primarily for **Google TV** and **Android** phones, with planned support for additional TV operating systems.
 
-> **Note**: Make sure you have completed the [Set Up Your Environment](https://reactnative.dev/docs/set-up-your-environment) guide before proceeding.
+---
 
-## Step 1: Start Metro
+## ✨ Features
 
-First, you will need to run **Metro**, the JavaScript build tool for React Native.
+### 🎬 Streaming & Playback
+- **Bufferless TV channel streaming** with adaptive stream resolution
+- **Multiple stream sources per channel** — automatic failover via `StreamResolver`
+- **Stream health monitoring** via `StreamHealthService` for real-time quality checks
+- **Full-featured video player** with custom overlay controls (`PlayerOverlay`, `PlayerControls`)
+- **EPG (Electronic Program Guide)** support via `epgService`
 
-To start the Metro dev server, run the following command from the root of your React Native project:
+### 📺 Dual UI Layouts
+- **Simple UI** — clean, linear channel list for quick browsing (`SimpleUIScreen`)
+- **Advanced UI** — rich grid-based channel display with cards and categories (`AdvancedUIScreen`)
 
-```sh
-# Using npm
-npm start
+### 🔍 Channel Discovery & Navigation
+- **Category-based filtering** (`CategorySelector`, `ChannelFilters`)
+- **Language selector** for multilingual channel libraries
+- **Keypad dialer** for direct channel number entry
+- **Search and sort** utilities via `channelUtils`
 
-# OR using Yarn
-yarn start
+### 🔒 Security
+- **Root detection** — native Kotlin module (`RootDetectionModule`) with JS service layer (`rootDetectionService`)
+- **SSL Pinning** — custom `OkHttpClient` factory (`PinnedOkHttpClientFactory`) with full JS bridge (`SslPinningModule`, `SslPinningService`)
+- **Certificate pinning** protects all API traffic from MITM attacks
+
+### 🔄 OTA Updates
+- **Over-the-air update system** (`OTAUpdateService`, `OTAUpdateScreen`) — push app updates without going through the Play Store
+- **Remote config service** (`remoteConfigService`) for dynamic feature flags and configuration
+
+### 📱 Device & Orientation Support
+- **Native orientation management** via `OrientationModule` (Kotlin) and `useOrientation` hook
+- **Landscape/portrait auto-rotation** with `OrientationHelper`
+- Optimized layouts for both **10-foot TV UI** and **handheld phone** use cases
+
+### 🎨 UI & UX
+- **Animated splash screen** (`SplashScreen`) with Lottie animation support
+- **Theme system** with `ThemeContext` for light/dark mode
+- **Custom fonts and image assets**
+- **Reusable component library** — `Button`, `Input`, `Modal`, `Loading`, `ErrorBoundary`
+
+### ⚙️ Settings & Personalization
+- **Settings screen** with persistent user preferences (`SettingsContext`, `PreferencesService`)
+- **Async storage layer** with caching (`CacheService`, `AsyncStorageService`)
+
+### 🛠️ Reliability & Error Handling
+- **Crash handler** and structured error logging (`CrashHandler`, `ErrorLogger`, `ErrorReporter`)
+- **Video error boundary** to gracefully handle player failures (`VideoErrorBoundary`)
+- **Global error boundary** for React tree (`ErrorBoundary`)
+
+---
+
+## 🗂️ Project Structure
+
+```
+├── android/                        # Native Android code
+│   └── src/main/java/com/iptv/
+│       ├── MainActivity.kt
+│       ├── MainApplication.kt
+│       ├── OrientationModule.kt    # Native screen orientation control
+│       ├── RootDetectionModule.kt  # Native root/jailbreak detection
+│       └── sslpinning/
+│           ├── PinnedOkHttpClientFactory.kt
+│           ├── SslPinningModule.kt
+│           └── SslPinningPackage.kt
+│
+└── src/
+    ├── assets/                     # Fonts, images, Lottie animations
+    ├── components/
+    │   ├── channel/                # Channel list, grid, filters, keypad
+    │   ├── common/                 # Shared UI primitives
+    │   └── player/                 # Video player and controls
+    ├── constants/                  # App config, routes, colors, channel data
+    ├── context/                    # React contexts (Channel, Player, Settings, Theme)
+    ├── hooks/                      # Custom hooks (channels, player, orientation, settings)
+    ├── navigation/                 # App & root navigators
+    ├── screens/
+    │   ├── advanced/               # Grid-based channel UI
+    │   ├── simple/                 # List-based channel UI
+    │   ├── selection/              # UI mode selection screen
+    │   ├── settings/               # App settings
+    │   ├── ota/                    # OTA update screen
+    │   └── splash/                 # Animated splash screen
+    ├── services/
+    │   ├── api/                    # API client and channel API
+    │   ├── error/                  # Crash handling and logging
+    │   ├── storage/                # Async storage, caching, preferences
+    │   └── stream/                 # Stream resolution and health monitoring
+    ├── types/                      # TypeScript type definitions
+    └── utils/                      # Helpers, formatters, validators
 ```
 
-## Step 2: Build and run your app
+---
 
-With Metro running, open a new terminal window/pane from the root of your React Native project, and use one of the following commands to build and run your Android or iOS app:
+## 🚀 Getting Started
 
-### Android
+### Prerequisites
 
-```sh
-# Using npm
-npm run android
+- Node.js >= 18
+- React Native CLI
+- Android Studio with Android SDK
+- JDK 17+
 
-# OR using Yarn
-yarn android
+### Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/your-username/iptv-player.git
+cd iptv-player
+
+# Install dependencies
+npm install
+
+# Install iOS pods (if applicable)
+cd ios && pod install && cd ..
 ```
 
-### iOS
+### Running the App
 
-For iOS, remember to install CocoaPods dependencies (this only needs to be run on first clone or after updating native deps).
+```bash
+# Android phone
+npx react-native run-android
 
-The first time you create a new project, run the Ruby bundler to install CocoaPods itself:
-
-```sh
-bundle install
+# Google TV (connect ADB to TV device)
+adb connect <TV_IP>:5555
+npx react-native run-android --deviceId <device-id>
 ```
 
-Then, and every time you update your native dependencies, run:
+### Channel Configuration
 
-```sh
-bundle exec pod install
+Place your M3U8 playlist at:
+```
+src/constants/channels.m3u8
+android/src/main/assets/channels.m3u8
 ```
 
-For more information, please visit [CocoaPods Getting Started guide](https://guides.cocoapods.org/using/getting-started.html).
+---
 
-```sh
-# Using npm
-npm run ios
+## 🔐 Security Configuration
 
-# OR using Yarn
-yarn ios
+### SSL Pinning
+
+Update your certificate hashes in the SSL pinning configuration:
+
+```kotlin
+// PinnedOkHttpClientFactory.kt
+CertificatePinner.Builder()
+    .add("your-api-domain.com", "sha256/YOUR_CERTIFICATE_HASH")
+    .build()
 ```
 
-If everything is set up correctly, you should see your new app running in the Android Emulator, iOS Simulator, or your connected device.
+### Root Detection
 
-This is one way to run your app — you can also build it directly from Android Studio or Xcode.
+Root detection runs automatically on app launch via `rootDetectionService`. Configure the response behavior in `config.ts`.
 
-## Step 3: Modify your app
+---
 
-Now that you have successfully run the app, let's make changes!
+## 📡 Supported Platforms
 
-Open `App.tsx` in your text editor of choice and make some changes. When you save, your app will automatically update and reflect these changes — this is powered by [Fast Refresh](https://reactnative.dev/docs/fast-refresh).
+| Platform | Status |
+|---|---|
+| Android Phone | ✅ Supported |
+| Google TV | ✅ Supported |
+| Amazon Fire TV | 🔜 Planned |
+| Roku | 🔜 Planned |
+| Apple TV (tvOS) | 🔜 Planned |
+| Samsung Tizen | 🔜 Planned |
 
-When you want to forcefully reload, for example to reset the state of your app, you can perform a full reload:
+---
 
-- **Android**: Press the <kbd>R</kbd> key twice or select **"Reload"** from the **Dev Menu**, accessed via <kbd>Ctrl</kbd> + <kbd>M</kbd> (Windows/Linux) or <kbd>Cmd ⌘</kbd> + <kbd>M</kbd> (macOS).
-- **iOS**: Press <kbd>R</kbd> in iOS Simulator.
+## 🛠️ Tech Stack
 
-## Congratulations! :tada:
+| Layer | Technology |
+|---|---|
+| Framework | React Native |
+| Language | TypeScript / Kotlin |
+| Navigation | React Navigation |
+| State Management | React Context API |
+| Video Playback | React Native Video |
+| Storage | AsyncStorage |
+| Animations | Lottie (splash screen) |
+| HTTP Security | OkHttp + Certificate Pinning |
+| Native Modules | Kotlin (Orientation, Root Detection, SSL Pinning) |
 
-You've successfully run and modified your React Native App. :partying_face:
+---
 
-### Now what?
+## 📋 Environment Configuration
 
-- If you want to add this new React Native code to an existing application, check out the [Integration guide](https://reactnative.dev/docs/integration-with-existing-apps).
-- If you're curious to learn more about React Native, check out the [docs](https://reactnative.dev/docs/getting-started).
+App behavior can be configured via `src/constants/config.ts` and remotely via `remoteConfigService`. Key settings include stream timeout, fallback source order, root detection enforcement, and OTA update endpoints.
 
-# Troubleshooting
+---
 
-If you're having issues getting the above steps to work, see the [Troubleshooting](https://reactnative.dev/docs/troubleshooting) page.
+## 🤝 Contributing
 
-# Learn More
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
-To learn more about React Native, take a look at the following resources:
+---
 
-- [React Native Website](https://reactnative.dev) - learn more about React Native.
-- [Getting Started](https://reactnative.dev/docs/environment-setup) - an **overview** of React Native and how setup your environment.
-- [Learn the Basics](https://reactnative.dev/docs/getting-started) - a **guided tour** of the React Native **basics**.
-- [Blog](https://reactnative.dev/blog) - read the latest official React Native **Blog** posts.
-- [`@facebook/react-native`](https://github.com/facebook/react-native) - the Open Source; GitHub **repository** for React Native.
+## 📄 License
+
+This project is proprietary. All rights reserved.
+
+---
+
+> Built with ❤️ for cord-cutters everywhere.
