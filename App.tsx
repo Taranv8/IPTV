@@ -35,7 +35,7 @@ import {
   formatMitmReasons,
   getDetectedAppNames,
   MitmDetectionResult,
-} from './services/sslPinningService';
+} from './src/services/sslPinningService';
 
 // ─── Global error handler ─────────────────────────────────────────────────────
 
