@@ -1,3 +1,4 @@
+//OrientationPackage.kt
 package com.iptv
 
 import com.facebook.react.ReactPackage

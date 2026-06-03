@@ -1,3 +1,5 @@
+RootDetectionPackage.kt
+
 package com.iptv // TODO: Replace with your actual package name
 
 import com.facebook.react.ReactPackage

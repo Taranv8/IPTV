@@ -1,3 +1,4 @@
+//  /sslpinning/SslPinningModule.kt
 package com.iptv.sslpinning
 
 import android.content.Context
@@ -214,7 +215,7 @@ PinnedOkHttpClientFactory.updateClient(pinnedClient!!)
     // Private helpers
     // ─────────────────────────────────────────────────────────────────────────
 
-   private fun buildPinnedClient(pins: Set<String>): OkHttpClient {
+  private fun buildPinnedClient(pins: Set<String>): OkHttpClient {
     val normalisedPins = pins.map { if (it.startsWith("sha256/")) it else "sha256/$it" }
 
     val pinnerBuilder = CertificatePinner.Builder()
@@ -223,12 +224,12 @@ PinnedOkHttpClientFactory.updateClient(pinnedClient!!)
         pinnerBuilder.add("iptv-backend-ds-585a.up.railway.app", pin)
     }
 
-    // Custom TrustManager that additionally validates SPKI hashes
     val trustManager = buildPinningTrustManager(pins)
     val sslContext = SSLContext.getInstance("TLS")
     sslContext.init(null, arrayOf(trustManager), java.security.SecureRandom())
 
-    return OkHttpClient.Builder()
+    // ✅ KEY FIX: start from RN's builder here too
+    return OkHttpClientProvider.createClientBuilder()
         .certificatePinner(pinnerBuilder.build())
         .sslSocketFactory(sslContext.socketFactory, trustManager)
         .connectTimeout(15, TimeUnit.SECONDS)

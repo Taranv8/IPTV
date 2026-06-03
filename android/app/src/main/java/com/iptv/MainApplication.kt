@@ -1,3 +1,4 @@
+// MainApplication.kt
 package com.iptv
 
 import android.app.Application

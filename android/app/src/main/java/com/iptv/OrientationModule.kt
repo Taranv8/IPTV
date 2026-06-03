@@ -1,3 +1,4 @@
+// OrientationModule.kt
 package com.iptv
 
 import android.content.pm.ActivityInfo
