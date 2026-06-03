@@ -1,4 +1,3 @@
-//  /sslpinning/PinnedOkHttpClientFactory.kt
 package com.iptv.sslpinning
 
 import com.facebook.react.modules.network.OkHttpClientFactory

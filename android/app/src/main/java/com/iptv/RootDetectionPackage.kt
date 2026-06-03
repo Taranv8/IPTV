@@ -1,7 +1,5 @@
-RootDetectionPackage.kt
 
-package com.iptv // TODO: Replace with your actual package name
-
+package com.iptv 
 import com.facebook.react.ReactPackage
 import com.facebook.react.bridge.NativeModule
 import com.facebook.react.bridge.ReactApplicationContext

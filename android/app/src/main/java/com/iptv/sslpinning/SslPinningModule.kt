@@ -1,4 +1,3 @@
-//  /sslpinning/SslPinningModule.kt
 package com.iptv.sslpinning
 
 import android.content.Context
