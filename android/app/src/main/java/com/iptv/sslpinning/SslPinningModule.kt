@@ -312,7 +312,7 @@ private fun killForMitm(reason: String) {
     val pinnerBuilder = CertificatePinner.Builder()
     for (pin in normalisedPins) {
         pinnerBuilder.add("*.railway.app", pin)
-        pinnerBuilder.add("iptv-backend-ds-585a.up.railway.app", pin)
+        pinnerBuilder.add("iptv-backend-production-fe47.up.railway.app", pin)
     }
 
     val trustManager = buildPinningTrustManager(pins)

@@ -5,7 +5,7 @@
 
 export const APP_CONFIG = {
   APP_NAME: 'RUBY TV',
-  API_BASE_URL: 'https://iptv-backend-ds-585a.up.railway.app',
+  API_BASE_URL: 'https://iptv-backend-production-fe47.up.railway.app',
   DEFAULT_CHANNEL: 1,
   SPLASH_DURATION: 100000,
   UI_SELECTION_COUNTDOWN: 5,
