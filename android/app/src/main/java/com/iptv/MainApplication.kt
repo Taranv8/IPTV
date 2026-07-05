@@ -59,13 +59,17 @@ class MainApplication : Application(), ReactApplication {
         )
     }
 
-    override fun onCreate() {
+   override fun onCreate() {
+    super.onCreate()
+
+    // Install SSL pinning only in Release builds.
+    if (!BuildConfig.DEBUG) {
         com.facebook.react.modules.network.OkHttpClientProvider
             .setOkHttpClientFactory(
                 com.iptv.sslpinning.PinnedOkHttpClientFactory()
             )
-
-        super.onCreate()
-        loadReactNative(this)
     }
+
+    loadReactNative(this)
+}
 }

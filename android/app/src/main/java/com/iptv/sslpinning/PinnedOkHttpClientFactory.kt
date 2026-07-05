@@ -1,76 +1,94 @@
-package com.iptv
+package com.iptv.sslpinning
 
-import android.app.Application
-import java.io.File
-
-import com.facebook.react.PackageList
-import com.facebook.react.ReactApplication
-import com.facebook.react.ReactHost
-import com.facebook.react.ReactNativeHost
-import com.facebook.react.ReactNativeApplicationEntryPoint.loadReactNative
-import com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost
-import com.facebook.react.defaults.DefaultReactNativeHost
-
+import com.facebook.react.modules.network.OkHttpClientFactory
 import com.facebook.react.modules.network.OkHttpClientProvider
+import com.iptv.BuildConfig
+import okhttp3.HttpUrl
+import okhttp3.OkHttpClient
+import okhttp3.Protocol
+import okhttp3.Response
+import okhttp3.ResponseBody
+import java.util.concurrent.TimeUnit
 
-import com.iptv.RootDetectionPackage
-import com.iptv.sslpinning.PinnedOkHttpClientFactory
+class PinnedOkHttpClientFactory : OkHttpClientFactory {
 
-class MainApplication : Application(), ReactApplication {
+    companion object {
 
-    override val reactNativeHost: ReactNativeHost =
-        object : DefaultReactNativeHost(this) {
+        @Volatile
+        private var activeClient: OkHttpClient? = null
 
-            override fun getUseDeveloperSupport() = BuildConfig.DEBUG
+        fun updateClient(pinnedClient: OkHttpClient) {
+            activeClient = OkHttpClientProvider.createClientBuilder()
+                .certificatePinner(pinnedClient.certificatePinner)
+                .connectTimeout(
+                    pinnedClient.connectTimeoutMillis.toLong(),
+                    TimeUnit.MILLISECONDS
+                )
+                .readTimeout(
+                    pinnedClient.readTimeoutMillis.toLong(),
+                    TimeUnit.MILLISECONDS
+                )
+                .writeTimeout(
+                    pinnedClient.writeTimeoutMillis.toLong(),
+                    TimeUnit.MILLISECONDS
+                )
+                .build()
+        }
 
-            override fun getPackages() =
-                PackageList(this).packages.apply {
-                    add(OrientationPackage())
-                    add(RootDetectionPackage())
-                    add(SslPinningPackage())
-                }
+        private val FIREBASE_ALLOWED_SUFFIXES = listOf(
+            "firebaseremoteconfig.googleapis.com",
+            "firebaseinstallations.googleapis.com",
+            "firebaselogging.googleapis.com",
+            "firebase.googleapis.com",
+            "googleapis.com",
+            "gstatic.com",
+            "google.com"
+        )
 
-            override fun getJSMainModuleName() = "index"
-
-            /**
-             * Debug -> Metro
-             * Release -> OTA bundle if available
-             */
-            override fun getJSBundleFile(): String? {
-                if (BuildConfig.DEBUG) {
-                    return null
-                }
-
-                val otaBundle =
-                    File("${filesDir.absolutePath}/ota/index.android.bundle")
-
-                return if (otaBundle.exists()) {
-                    otaBundle.absolutePath
-                } else {
-                    null
-                }
+        private fun isAllowedPrePinHost(url: HttpUrl): Boolean {
+            // Allow every request in Debug builds (Metro, localhost, LAN IPs, etc.)
+            if (BuildConfig.DEBUG) {
+                return true
             }
 
-            override fun getBundleAssetName() = "index.android.bundle"
+            val host = url.host.lowercase()
+
+            return FIREBASE_ALLOWED_SUFFIXES.any { suffix ->
+                host == suffix || host.endsWith(".$suffix")
+            }
         }
 
-    override val reactHost: ReactHost by lazy {
-        getDefaultReactHost(
-            context = applicationContext,
-            reactNativeHost = reactNativeHost
-        )
+        private fun buildBlockingClient(): OkHttpClient {
+            return OkHttpClientProvider.createClientBuilder()
+                .addInterceptor { chain ->
+                    val request = chain.request()
+
+                    if (isAllowedPrePinHost(request.url)) {
+                        chain.proceed(request)
+                    } else {
+                        Response.Builder()
+                            .request(request)
+                            .protocol(Protocol.HTTP_1_1)
+                            .code(503)
+                            .message("SSL pinning not yet initialised")
+                            .body(ResponseBody.create(null, ByteArray(0)))
+                            .build()
+                    }
+                }
+                .connectTimeout(15, TimeUnit.SECONDS)
+                .readTimeout(20, TimeUnit.SECONDS)
+                .writeTimeout(20, TimeUnit.SECONDS)
+                .build()
+        }
     }
 
-    override fun onCreate() {
-        super.onCreate()
-
-        // Enable SSL pinning only in Release builds.
-        if (!BuildConfig.DEBUG) {
-            OkHttpClientProvider.setOkHttpClientFactory(
-                PinnedOkHttpClientFactory()
-            )
+    override fun createNewNetworkModuleClient(): OkHttpClient {
+        // In Debug builds, use React Native's default client.
+        if (BuildConfig.DEBUG) {
+            return OkHttpClientProvider.createClientBuilder().build()
         }
 
-        loadReactNative(this)
+        // In Release builds, use the pinned client if available.
+        return activeClient ?: buildBlockingClient()
     }
 }
