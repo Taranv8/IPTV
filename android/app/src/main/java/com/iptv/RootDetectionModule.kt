@@ -299,34 +299,53 @@ class RootDetectionModule(private val reactContext: ReactApplicationContext) :
     //
     // This check is DISABLED until you replace the placeholder hash below.
 
-    private fun checkSignatureIntegrity(): Boolean {
-        return try {
-            val EXPECTED_SHA256 = "ce10d45f39917bea718e1242140053667d7ef63900ecea7351bd5e4a81cd8218"
+   private fun checkSignatureIntegrity(): Boolean {
 
-            // Guard: if placeholder is still set, skip this check entirely.
-            if (EXPECTED_SHA256.startsWith("REPLACE_")) return false
+    // Skip signature verification in Debug builds.
+    // Debug APKs are signed with the debug keystore, so they will never
+    // match the production certificate fingerprint.
+    if (BuildConfig.DEBUG) {
+        return false
+    }
 
-            val pm = reactContext.packageManager
-            val packageName = reactContext.packageName
+    return try {
+        val EXPECTED_SHA256 =
+            "ce10d45f39917bea718e1242140053667d7ef63900ecea7351bd5e4a81cd8218"
 
-            val signatures = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                pm.getPackageInfo(packageName, PackageManager.GET_SIGNING_CERTIFICATES)
-                    .signingInfo?.apkContentsSigners
+        if (EXPECTED_SHA256.startsWith("REPLACE_")) {
+            return false
+        }
+
+        val pm = reactContext.packageManager
+        val packageName = reactContext.packageName
+
+        val signatures =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                pm.getPackageInfo(
+                    packageName,
+                    PackageManager.GET_SIGNING_CERTIFICATES
+                ).signingInfo?.apkContentsSigners
             } else {
                 @Suppress("DEPRECATION")
-                pm.getPackageInfo(packageName, PackageManager.GET_SIGNATURES).signatures
+                pm.getPackageInfo(
+                    packageName,
+                    PackageManager.GET_SIGNATURES
+                ).signatures
             }
 
-            if (signatures.isNullOrEmpty()) return true
-
-            val md = MessageDigest.getInstance("SHA-256")
-            val sigHex = md.digest(signatures[0].toByteArray())
-                .joinToString("") { "%02x".format(it) }
-
-            sigHex != EXPECTED_SHA256
-        } catch (_: Exception) {
-            // If the signature check itself throws, don't block the user.
-            false
+        if (signatures.isNullOrEmpty()) {
+            return true
         }
+
+        val md = MessageDigest.getInstance("SHA-256")
+        val currentSignature = md.digest(signatures[0].toByteArray())
+            .joinToString("") { "%02x".format(it) }
+
+        currentSignature != EXPECTED_SHA256.lowercase()
+
+    } catch (_: Exception) {
+        // Don't falsely block users if the signature check itself fails.
+        false
     }
+}
 }
