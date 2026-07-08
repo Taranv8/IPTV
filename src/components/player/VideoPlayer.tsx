@@ -150,12 +150,13 @@ function errorStatus(label: string, error: string): SpinnerStatus {
 interface Props {
   channel: Channel;
   fullscreen?: boolean;
+  paused?: boolean; 
   onFullscreenDismiss?: () => void;
 }
 
 // ─── Inner player ─────────────────────────────────────────────────────────────
 
-const VideoPlayerInner: React.FC<Props> = ({ channel, fullscreen = false, onFullscreenDismiss }) => {
+const VideoPlayerInner: React.FC<Props> = ({ channel, fullscreen = false, paused = false, onFullscreenDismiss }) => {
 
   const [stream,           setStream]           = useState<ResolvedStream | null>(null);
   const [spinner,          setSpinner]          = useState<SpinnerStatus>(RESOLVING);
@@ -640,7 +641,7 @@ const VideoPlayerInner: React.FC<Props> = ({ channel, fullscreen = false, onFull
   style={styles.video}
   resizeMode="contain"
   bufferConfig={BUFFER_CONFIG}
-  paused={!appActive}
+  paused={!appActive || paused}  
   repeat={false}
   playInBackground={false}
   playWhenInactive={false}

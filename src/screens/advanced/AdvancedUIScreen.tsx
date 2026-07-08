@@ -54,6 +54,15 @@
 // switching still works exactly the way it did before entering that state:
 // the "Up Next" recommendations on the (non-fullscreen) Now Playing page on
 // phone, and the initial channel grid before a channel is loaded.
+//
+// ── ADDED: IMMERSIVE NAV BAR + CENTER PLAY/PAUSE + TV D-PAD FOCUS ───────────
+// • enterImmersive()/exitImmersive() hide the 3-button Android nav bar while
+//   fullscreenActive, restoring it (swipe-to-reveal) the rest of the time.
+// • A single `isPaused` boolean, lifted here and passed down as the `paused`
+//   prop to <VideoPlayer>, drives one shared center play/pause button that
+//   renders in both the embedded "Now Playing" view and fullscreen/TV.
+// • On TV, the play/pause button gets initial D-pad focus, and D-pad Up from
+//   it jumps straight to the exit-fullscreen button via `nextFocusUp`.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, {
@@ -76,6 +85,7 @@ import {
   StatusBar,
   Animated,
   BackHandler,
+  findNodeHandle,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../types/navigation';
@@ -86,6 +96,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useOrientation } from '../../hooks/useOrientation';
 import { Channel } from '../../types/channel';
 import { lockToLandscape, lockToPortrait } from '../../utils/OrientationHelper';
+import { enterImmersive, exitImmersive } from '../../utils/ImmersiveHelper';
 
 // ─── TV event shim ────────────────────────────────────────────────────────────
 type TVEventHandlerHook = (cb: (evt: { eventType: string }) => void) => void;
@@ -571,36 +582,71 @@ const AdvancedUIScreen: React.FC<Props> = ({ navigation }) => {
     if (settleTimer.current) clearTimeout(settleTimer.current);
   }, []);
 
+  // ── Play/pause (shared between mini view, fullscreen, and TV) ────────────
+  const [isPaused, setIsPaused] = useState(false);
+  const togglePause = useCallback(() => setIsPaused(p => !p), []);
+
+  // ── TV D-pad focus wiring ─────────────────────────────────────────────────
+  const exitBtnRef = useRef<any>(null);
+  const playPauseRef = useRef<any>(null);
+  const [exitBtnTag, setExitBtnTag] = useState<number | null>(null);
+
   // True whenever the phone should show the immersive full-bleed player —
   // whether the user pressed the fullscreen button OR the device is
   // physically rotated to landscape. TV never uses this path; TV has its
   // own always-on overlay chrome further below.
   const fullscreenActive = !isTV && !!playingChannel && (manualFullscreen || isLandscape);
 
- const enterFullscreen = useCallback(() => {
-  setChromeSettled(false);   // don't arm a blind timer — wait for real confirmation
-  lockToLandscape();
-  setManualFullscreen(true);
-}, []);
+  const enterFullscreen = useCallback(() => {
+    setChromeSettled(false);
+    lockToLandscape();
+    setManualFullscreen(true);
+  }, []);
 
   const exitFullscreen = useCallback(() => {
     armSettleDelay(250);
     setManualFullscreen(false);
+    exitImmersive();
     lockToPortrait();
   }, [armSettleDelay]);
+
+  // Reset pause state whenever the channel changes.
+  useEffect(() => { setIsPaused(false); }, [playingChannel?.id]);
+
+  // Hide the 3-button nav bar while fullscreen (immersive, swipe-to-reveal);
+  // restore it the rest of the time.
+  useEffect(() => {
+    if (fullscreenActive) {
+      enterImmersive();
+    } else {
+      exitImmersive();
+    }
+  }, [fullscreenActive]);
+
+  // Safety net: make sure the nav bar is restored if this screen unmounts
+  // while still in fullscreen (e.g. user navigates away via some other path).
+  useEffect(() => () => exitImmersive(), []);
 
   // If the phone rotates to landscape organically (no button press) while a
   // channel is playing, still run the settle delay so controls fade in
   // smoothly instead of popping — purely cosmetic, player stays mounted.
- useEffect(() => {
-  if (fullscreenActive && isLandscape) {
-    const t = setTimeout(() => setChromeSettled(true), 80);
-    return () => clearTimeout(t);
-  }
-  if (!fullscreenActive) {
-    setChromeSettled(true);
-  }
-}, [fullscreenActive, isLandscape]);
+  useEffect(() => {
+    if (fullscreenActive && isLandscape) {
+      const t = setTimeout(() => setChromeSettled(true), 80);
+      return () => clearTimeout(t);
+    }
+    if (!fullscreenActive) {
+      setChromeSettled(true);
+    }
+  }, [fullscreenActive, isLandscape]);
+
+  // TV: track the exit button's native node handle so the play/pause button
+  // can route D-pad Up straight to it via nextFocusUp.
+  useEffect(() => {
+    if (exitBtnRef.current) {
+      setExitBtnTag(findNodeHandle(exitBtnRef.current));
+    }
+  }, [fullscreenActive, isTV]);
 
   // ── Channel selection ──────────────────────────────────────────────────────
   const handleChannelSelect = useCallback((channel: Channel) => {
@@ -632,8 +678,9 @@ const AdvancedUIScreen: React.FC<Props> = ({ navigation }) => {
 
   // ── Landscape/fullscreen controls auto-hide ───────────────────────────────
   // NOTE: this only gates the *auto-hiding* chrome (channel-name pill, TV top
-  // bar). The exit-fullscreen button is intentionally independent of this —
-  // see the fix note at the top of the file.
+  // bar, and now the center play/pause button in fullscreen/TV). The
+  // exit-fullscreen button is intentionally independent of this — see the
+  // fix note at the top of the file.
   const [showControls, setShowControls] = useState(true);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -761,6 +808,14 @@ const AdvancedUIScreen: React.FC<Props> = ({ navigation }) => {
     };
   }, [isTV, fullscreenActive, videoNowPlayingH, STATUS_BAR_HEIGHT]);
 
+  // Should the shared center play/pause button render right now?
+  // Mini "Now Playing" view: always (no auto-hide there).
+  // Fullscreen / TV: only while the auto-hiding chrome is shown.
+  const showCenterPlayPause =
+    isNowPlayingPage || fullscreenActive || isTV
+      ? (fullscreenActive || isTV ? showControls : true)
+      : false;
+
   // ════════════════════════════════════════════════════════════════════════
   // Single render tree — no more early-return branches per orientation/mode.
   // Chrome (grid / controls / mini-row) is layered conditionally; the player
@@ -787,6 +842,7 @@ const AdvancedUIScreen: React.FC<Props> = ({ navigation }) => {
             key={baseKey}
             channel={playingChannel as Channel}
             fullscreen={fullscreenActive}
+            paused={isPaused}
             onFullscreenDismiss={exitFullscreen}
           />
 
@@ -796,6 +852,24 @@ const AdvancedUIScreen: React.FC<Props> = ({ navigation }) => {
               style={[StyleSheet.absoluteFill, { zIndex: showControls ? 1 : 10 }]}
               onPress={resetControlsHideTimer}
             />
+          )}
+
+          {/* ── Center play/pause — mini view, fullscreen, and TV ─────────
+              Shared across all three contexts via the single `isPaused`
+              state above, which is what's actually passed to VideoPlayer. */}
+          {showCenterPlayPause && (
+            <Pressable
+              ref={playPauseRef}
+              style={npStyles.centerPlayBtn}
+              onPress={togglePause}
+              hasTVPreferredFocus={isTV}
+              nextFocusUp={exitBtnTag ?? undefined}
+              accessibilityLabel={isPaused ? 'Play' : 'Pause'}
+              accessibilityRole="button"
+              hitSlop={10}
+            >
+              <Icon name={isPaused ? 'play' : 'pause'} size={32} color="#fff" />
+            </Pressable>
           )}
 
           {/* Fullscreen-entry button — only shown embedded in Now Playing */}
@@ -814,21 +888,25 @@ const AdvancedUIScreen: React.FC<Props> = ({ navigation }) => {
           {/* ── Exit-fullscreen button (phone) ────────────────────────────
               Always rendered while fullscreenActive — independent of the
               auto-hide controls timer and the rotation-settle cover — so
-              it's never missing or briefly untappable. */}
-       {fullscreenActive && (
-  <TouchableOpacity
-    style={[
-      fsStyles.exitBtn,
-      !chromeSettled && { opacity: 0 },
-    ]}
-    onPress={exitFullscreen}
-    accessibilityLabel="Exit fullscreen"
-    accessibilityRole="button"
-    hitSlop={8}
-  >
-    <Icon name="fullscreen-exit" size={22} color="#fff" />
-  </TouchableOpacity>
-)}
+              it's never missing or briefly untappable. Only its opacity
+              fades in once chromeSettled confirms the real landscape frame
+              has arrived, so it's never laid out against a stale bounds. */}
+          {fullscreenActive && (
+            <TouchableOpacity
+              ref={exitBtnRef}
+              style={[
+                fsStyles.exitBtn,
+                !chromeSettled && { opacity: 0 },
+              ]}
+              onPress={exitFullscreen}
+              accessibilityLabel="Exit fullscreen"
+              accessibilityRole="button"
+              hitSlop={8}
+            >
+              <Icon name="fullscreen-exit" size={22} color="#fff" />
+            </TouchableOpacity>
+          )}
+
           {/* ── Immersive fullscreen chrome (phone) ───────────────────────
               Channel name only — no "switch channel" list. Fullscreen means
               just the video, full-bleed, undistracted. */}
@@ -1029,6 +1107,24 @@ const placeholderStyles = StyleSheet.create({
 
 // ─── Now Playing styles ───────────────────────────────────────────────────────
 const npStyles = StyleSheet.create({
+  centerPlayBtn: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    marginLeft: -28,
+    marginTop: -28,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+    zIndex: 25,
+    elevation: 25,
+  },
+
   fsToggleBtn: {
     position: 'absolute',
     top: 10,

@@ -26,6 +26,7 @@ class MainApplication : Application(), ReactApplication {
                     add(OrientationPackage())
                     add(RootDetectionPackage())
                     add(SslPinningPackage())
+                    add(ImmersivePackage()) 
                 }
 
             override fun getJSMainModuleName() = "index"
