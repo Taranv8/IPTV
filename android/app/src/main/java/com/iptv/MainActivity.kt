@@ -9,18 +9,14 @@ import com.facebook.react.defaults.DefaultReactActivityDelegate
 
 class MainActivity : ReactActivity() {
 
-  override fun onCreate(savedInstanceState: Bundle?) {
-
-    // Detect TV properly using system feature (most reliable)
-    val isTv = packageManager.hasSystemFeature("android.software.leanback")
-
-    // Lock only phones/tablets to portrait
-    if (!isTv) {
-      requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-    }
-
+ override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
-  }
+
+    val isTv = packageManager.hasSystemFeature("android.software.leanback")
+    if (!isTv) {
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+    }
+}
 
   override fun getMainComponentName(): String = "RUBYTV"
 

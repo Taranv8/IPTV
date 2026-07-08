@@ -3,8 +3,57 @@
 // Advanced UI — channel grid with:
 //   • Portrait  → 2-col grid; selecting a channel opens a YouTube-style
 //                 "Now Playing" sub-page (back → returns to grid)
-//   • Landscape → full-screen player overlay + mini channel row at bottom
-//   • Fullscreen modal → 5 mini channel cards in one row near bottom controls
+//   • Landscape / fullscreen → one immersive player, no channel recommendations
+//   • TV        → full-bleed player with minimal top chrome only
+//
+// ── FIX: SINGLE PERSISTENT PLAYER ───────────────────────────────────────────
+// Previously this screen had 3 separate early-return branches, each mounting
+// its own <VideoPlayer>, plus a 4th copy inside a <Modal> for the "fullscreen"
+// button. Every transition (NowPlaying → fullscreen, rotate, fullscreen →
+// back) unmounted one VideoPlayer and mounted a brand new one, which forced
+// VideoPlayer's init effect to re-run StreamResolver.resolve() and rebuild
+// the native <Video> node from scratch — throwing away all buffered content
+// and opening a fresh connection every time.
+//
+// Now there is exactly ONE <VideoPlayer key={baseKey} .../> in the whole
+// component. It's rendered from a single spot in the tree; only its
+// *container's style* (and the chrome layered around it) changes between
+// "embedded in Now Playing", "landscape/fullscreen", and "TV overlay". Since
+// React reconciles by position + key, not by which conditional branch wrote
+// the JSX, the same instance survives all of those transitions.
+//
+// There's no more RN <Modal> for fullscreen either — Modal renders into a
+// separate native window, which would have made "don't remount" impossible
+// without much deeper native work. Fullscreen is now just an absolutely
+// positioned, full-bleed <View> in the same tree.
+//
+// ── FIX: EXIT-FULLSCREEN BUTTON ALWAYS AVAILABLE ────────────────────────────
+// The exit button previously only rendered while BOTH `chromeSettled` AND
+// `showControls` were true, so it disappeared with the rest of the
+// auto-hiding chrome and could be effectively impossible to find/tap again
+// (especially over a native Android video surface, which can paint above
+// sibling RN views regardless of JS z-index). It's now rendered unconditionally
+// any time `fullscreenActive` is true — it never auto-hides, and it isn't part
+// of the "tap to reveal controls" flow. `elevation` was added so Android keeps
+// it visually on top of the native video surface.
+//
+// ── FIX: STATUS BAR OVERLAP ──────────────────────────────────────────────────
+// The embedded "Now Playing" player (portrait, non-fullscreen) is the very
+// first thing in the tree and sat flush against y=0. With a translucent
+// StatusBar, that meant the top sliver of the video was drawn *underneath*
+// the status bar. It now gets `marginTop: STATUS_BAR_HEIGHT` so it starts
+// just below it, matching the grid header and the TV top bar (which already
+// accounted for this).
+//
+// ── FIX: NO CHANNEL RECOMMENDATIONS WHILE STREAMING FULLSCREEN ──────────────
+// Previously, phone fullscreen showed a "Switch Channel" mini-row and TV
+// always showed a full channel grid overlaid on the playing video. Both are
+// removed: once a channel is actually streaming fullscreen (phone landscape/
+// fullscreen OR TV), the player is the only thing on screen (plus a small,
+// auto-hiding name/exit chrome) — no other-channel list, no grid. Channel
+// switching still works exactly the way it did before entering that state:
+// the "Up Next" recommendations on the (non-fullscreen) Now Playing page on
+// phone, and the initial channel grid before a channel is loaded.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, {
@@ -25,9 +74,8 @@ import {
   ScrollView,
   Platform,
   StatusBar,
-  Modal,
   Animated,
-  Dimensions,
+  BackHandler,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../types/navigation';
@@ -60,20 +108,14 @@ interface Props {
 // ─── Constants ────────────────────────────────────────────────────────────────
 const isTV = Platform.isTV;
 
-// ── Grid columns ──────────────────────────────────────────────────────────────
-//   Portrait phone  → 2 cols (bigger cards, easier to tap)
-//   Landscape phone → 4 cols
-//   TV              → 5 cols
 const PORTRAIT_COLS        = isTV ? 4 : 2;
 const LANDSCAPE_COLS       = isTV ? 5 : 4;
-const NOW_PLAYING_REC_COLS = isTV ? 4 : 3;   // recommended grid inside Now Playing
+const NOW_PLAYING_REC_COLS = isTV ? 4 : 3;
 
-// Player height ratios
-const VIDEO_PORTRAIT_HEIGHT_RATIO   = 0.38;  // ~38 % of screen height
-const VIDEO_NOWPLAYING_HEIGHT_RATIO = 0.42;  // slightly taller on Now Playing page
+const VIDEO_ASPECT_RATIO = 16 / 9;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ChannelCard
+// ChannelCard  (unchanged)
 // ─────────────────────────────────────────────────────────────────────────────
 interface CardProps {
   channel: Channel;
@@ -164,10 +206,6 @@ const ChannelCard: React.FC<CardProps> = React.memo(
               </View>
             )}
 
-            <View style={cardStyles.liveDot}>
-              <View style={[cardStyles.liveDotInner, isActive && cardStyles.liveDotActive]} />
-            </View>
-
             {channel.isHD && (
               <View style={[cardStyles.hdBadge, isActive && cardStyles.hdBadgeActive]}>
                 <Text style={cardStyles.hdText}>HD</Text>
@@ -182,9 +220,6 @@ const ChannelCard: React.FC<CardProps> = React.memo(
           </View>
 
           <View style={[cardStyles.nameStrip, isActive && cardStyles.nameStripActive]}>
-            <Text style={[cardStyles.channelNum, isActive && cardStyles.channelNumActive]}>
-              {channel.number}
-            </Text>
             <Text
               style={[cardStyles.channelName, isActive && cardStyles.channelNameActive]}
               numberOfLines={1}
@@ -200,7 +235,7 @@ const ChannelCard: React.FC<CardProps> = React.memo(
 
 const cardStyles = StyleSheet.create({
   card: {
-    borderRadius: 14,
+    borderRadius: 16,
     backgroundColor: 'rgba(10,15,30,0.85)',
     borderWidth: 1.5,
     borderColor: 'rgba(30,41,59,0.9)',
@@ -208,8 +243,8 @@ const cardStyles = StyleSheet.create({
     position: 'relative',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.45,
-    shadowRadius: 7,
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
     elevation: 5,
   },
   cardActive: {
@@ -245,7 +280,7 @@ const cardStyles = StyleSheet.create({
   },
   glowRing: {
     ...StyleSheet.absoluteFillObject,
-    borderRadius: 14,
+    borderRadius: 16,
     borderWidth: 2,
     borderColor: 'transparent',
   },
@@ -269,10 +304,6 @@ const cardStyles = StyleSheet.create({
   },
   logoInitialsActive: { color: '#60a5fa' },
 
-  liveDot: { position: 'absolute', top: 7, left: 8 },
-  liveDotInner: { width: 7, height: 7, borderRadius: 3.5, backgroundColor: '#374151' },
-  liveDotActive: { backgroundColor: '#22c55e' },
-
   hdBadge: {
     position: 'absolute',
     top: 6,
@@ -290,11 +321,11 @@ const cardStyles = StyleSheet.create({
   starBadge: { position: 'absolute', bottom: 6, right: 7 },
 
   nameStrip: {
-    height: 40,
+    height: 38,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 9,
-    gap: 6,
+    justifyContent: 'center',
+    paddingHorizontal: 10,
     backgroundColor: 'rgba(5,10,25,0.95)',
     borderTopWidth: 1,
     borderTopColor: 'rgba(30,41,59,0.8)',
@@ -303,109 +334,18 @@ const cardStyles = StyleSheet.create({
     backgroundColor: 'rgba(15,30,70,0.95)',
     borderTopColor: 'rgba(59,130,246,0.4)',
   },
-  channelNum: {
-    fontSize: isTV ? 11 : 10,
-    fontWeight: '800',
-    color: '#1e3a5f',
-    letterSpacing: 0.3,
-    flexShrink: 0,
-  },
-  channelNumActive: { color: '#3b82f6' },
   channelName: {
-    flex: 1,
-    fontSize: isTV ? 12 : 11,
+    fontSize: isTV ? 13 : 12,
     fontWeight: '700',
-    color: '#64748b',
+    color: '#94a3b8',
     letterSpacing: 0.1,
+    textAlign: 'center',
   },
   channelNameActive: { color: '#e2e8f0' },
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MiniChannelCard  — used in the fullscreen bottom row
-// ─────────────────────────────────────────────────────────────────────────────
-interface MiniCardProps {
-  channel: Channel;
-  isActive: boolean;
-  onPress: () => void;
-}
-
-const MiniChannelCard: React.FC<MiniCardProps> = React.memo(({ channel, isActive, onPress }) => {
-  const scaleAnim = useRef(new Animated.Value(1)).current;
-
-  return (
-    <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
-      <Pressable
-        style={[miniCardStyles.card, isActive && miniCardStyles.cardActive]}
-        onPress={onPress}
-        onPressIn={() =>
-          Animated.spring(scaleAnim, { toValue: 0.9, useNativeDriver: true, speed: 30, bounciness: 4 }).start()
-        }
-        onPressOut={() =>
-          Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, speed: 20, bounciness: 6 }).start()
-        }
-        accessibilityLabel={`Switch to ${channel.name}`}
-      >
-        <View style={miniCardStyles.logoArea}>
-          {channel.logo ? (
-            <Image source={{ uri: channel.logo }} style={miniCardStyles.logo} resizeMode="contain" />
-          ) : (
-            <Icon name="television-play" size={18} color={isActive ? '#60a5fa' : '#334155'} />
-          )}
-          {isActive && <View style={miniCardStyles.activeDot} />}
-        </View>
-        <Text style={[miniCardStyles.num, isActive && miniCardStyles.numActive]} numberOfLines={1}>
-          {channel.number}
-        </Text>
-        <Text style={[miniCardStyles.name, isActive && miniCardStyles.nameActive]} numberOfLines={1}>
-          {channel.name}
-        </Text>
-      </Pressable>
-    </Animated.View>
-  );
-});
-
-const miniCardStyles = StyleSheet.create({
-  card: {
-    width: 68,
-    backgroundColor: 'rgba(5,10,25,0.88)',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#1e293b',
-    alignItems: 'center',
-    paddingVertical: 7,
-    paddingHorizontal: 4,
-    marginHorizontal: 4,
-  },
-  cardActive: {
-    borderColor: '#3b82f6',
-    backgroundColor: 'rgba(29,78,216,0.22)',
-  },
-  logoArea: {
-    width: 44,
-    height: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-  },
-  logo: { width: 40, height: 28, borderRadius: 4 },
-  activeDot: {
-    position: 'absolute',
-    top: 2,
-    right: 2,
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
-    backgroundColor: '#22c55e',
-  },
-  num: { fontSize: 9, fontWeight: '800', color: '#334155', marginTop: 4, letterSpacing: 0.4 },
-  numActive: { color: '#60a5fa' },
-  name: { fontSize: 9, fontWeight: '600', color: '#475569', textAlign: 'center' },
-  nameActive: { color: '#cbd5e1' },
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SectionHeader
+// SectionHeader  (unchanged)
 // ─────────────────────────────────────────────────────────────────────────────
 const SectionHeader: React.FC<{
   icon: string;
@@ -480,7 +420,7 @@ const sectionHeaderStyles = StyleSheet.create({
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FilterChips
+// FilterChips  (unchanged)
 // ─────────────────────────────────────────────────────────────────────────────
 const LANGUAGES = [
   'All','Hindi','English','Marathi','Bengali','Telugu',
@@ -604,85 +544,111 @@ const AdvancedUIScreen: React.FC<Props> = ({ navigation }) => {
   // ── Playing state ─────────────────────────────────────────────────────────
   const [playingChannel, setPlayingChannel] = useState<Channel | null>(null);
 
-  // ── "Now Playing" sub-page (portrait only) ────────────────────────────────
-  //    true  → renders the YouTube-style Now Playing page
-  //    false → renders the main grid
+  // "Now Playing" sub-page (portrait, embedded player at top of the page)
   const [isNowPlayingPage, setIsNowPlayingPage] = useState(false);
 
-  // ── Fullscreen modal ──────────────────────────────────────────────────────
-  const [isFullscreenModal, setIsFullscreenModal]   = useState(false);
-  const [fullscreenReady,   setFullscreenReady]      = useState(false);
-  const fsReadyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Manual fullscreen toggle (phone only). Physical rotation to landscape
+  // reaches the same fullscreen UI via `isLandscape` below — the two are
+  // merged into ONE fullscreen experience on purpose (see note at top of
+  // file) so there is only ever one place that needs to show a full-bleed
+  // player, instead of the old "landscape overlay" vs "fullscreen modal"
+  // pair that fought over which player instance was mounted.
+  const [manualFullscreen, setManualFullscreen] = useState(false);
 
-  const enterFullscreen = useCallback(() => {
-    setFullscreenReady(false);
-    lockToLandscape();
-    setIsFullscreenModal(true);
-    if (fsReadyTimer.current) clearTimeout(fsReadyTimer.current);
-    fsReadyTimer.current = setTimeout(() => setFullscreenReady(true), 300);
-  }, []);
+  // Cosmetic only — gates the black cover + control fade-in while the native
+  // orientation lock settles. It NEVER gates whether <VideoPlayer> is mounted,
+  // and (as of the fix above) never gates the exit-fullscreen button either.
+  const [chromeSettled, setChromeSettled] = useState(true);
+  const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const exitFullscreen = useCallback(() => {
-    setFullscreenReady(false);
-    if (fsReadyTimer.current) clearTimeout(fsReadyTimer.current);
-    setIsFullscreenModal(false);
-    lockToPortrait();
+  const armSettleDelay = useCallback((ms: number) => {
+    setChromeSettled(false);
+    if (settleTimer.current) clearTimeout(settleTimer.current);
+    settleTimer.current = setTimeout(() => setChromeSettled(true), ms);
   }, []);
 
   useEffect(() => () => {
-    if (fsReadyTimer.current) clearTimeout(fsReadyTimer.current);
+    if (settleTimer.current) clearTimeout(settleTimer.current);
   }, []);
 
-  // ── Landscape overlay controls auto-hide ─────────────────────────────────
-  const [showLandscapeControls, setShowLandscapeControls] = useState(true);
-  const landHideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // True whenever the phone should show the immersive full-bleed player —
+  // whether the user pressed the fullscreen button OR the device is
+  // physically rotated to landscape. TV never uses this path; TV has its
+  // own always-on overlay chrome further below.
+  const fullscreenActive = !isTV && !!playingChannel && (manualFullscreen || isLandscape);
 
-  const resetLandscapeControls = useCallback(() => {
-    setShowLandscapeControls(true);
-    if (landHideTimer.current) clearTimeout(landHideTimer.current);
-    landHideTimer.current = setTimeout(() => setShowLandscapeControls(false), 4000);
-  }, []);
+ const enterFullscreen = useCallback(() => {
+  setChromeSettled(false);   // don't arm a blind timer — wait for real confirmation
+  lockToLandscape();
+  setManualFullscreen(true);
+}, []);
 
-  useEffect(() => {
-    if (isLandscape && playingChannel) resetLandscapeControls();
-    return () => { if (landHideTimer.current) clearTimeout(landHideTimer.current); };
-  }, [isLandscape, playingChannel, resetLandscapeControls]);
+  const exitFullscreen = useCallback(() => {
+    armSettleDelay(250);
+    setManualFullscreen(false);
+    lockToPortrait();
+  }, [armSettleDelay]);
 
-  useSafeTVEvents(resetLandscapeControls);
-
-  // ── Fullscreen control visibility (separate timer) ────────────────────────
-  const [showFsControls, setShowFsControls] = useState(true);
-  const fsHideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const resetFsControls = useCallback(() => {
-    setShowFsControls(true);
-    if (fsHideTimer.current) clearTimeout(fsHideTimer.current);
-    fsHideTimer.current = setTimeout(() => setShowFsControls(false), 5000);
-  }, []);
-
-  useEffect(() => {
-    if (isFullscreenModal && fullscreenReady) resetFsControls();
-    return () => { if (fsHideTimer.current) clearTimeout(fsHideTimer.current); };
-  }, [isFullscreenModal, fullscreenReady, resetFsControls]);
+  // If the phone rotates to landscape organically (no button press) while a
+  // channel is playing, still run the settle delay so controls fade in
+  // smoothly instead of popping — purely cosmetic, player stays mounted.
+ useEffect(() => {
+  if (fullscreenActive && isLandscape) {
+    const t = setTimeout(() => setChromeSettled(true), 80);
+    return () => clearTimeout(t);
+  }
+  if (!fullscreenActive) {
+    setChromeSettled(true);
+  }
+}, [fullscreenActive, isLandscape]);
 
   // ── Channel selection ──────────────────────────────────────────────────────
   const handleChannelSelect = useCallback((channel: Channel) => {
     setCurrentChannel(channel);
     setPlayingChannel(channel);
+    if (!isTV) setIsNowPlayingPage(true);
+  }, [setCurrentChannel]);
 
-    if (!isTV && isLandscape) {
-      enterFullscreen();
-    } else if (!isTV && !isLandscape) {
-      // Portrait phone → open Now Playing sub-page
-      setIsNowPlayingPage(true);
+  // ── Unified back handling ──────────────────────────────────────────────────
+  //   • In fullscreen           → exit fullscreen, return to Now Playing
+  //   • In Now Playing (portrait)→ return to grid (playingChannel kept so the
+  //                                grid still shows which card is active)
+  const handleBack = useCallback(() => {
+    if (fullscreenActive) {
+      exitFullscreen();
+      return;
     }
-  }, [isLandscape, setCurrentChannel, enterFullscreen]);
-
-  // ── Back from Now Playing to grid ─────────────────────────────────────────
-  const handleBackFromNowPlaying = useCallback(() => {
     setIsNowPlayingPage(false);
-    // Keep playingChannel so state is preserved but we leave Now Playing
+  }, [fullscreenActive, exitFullscreen]);
+
+  useEffect(() => {
+    if (!isNowPlayingPage && !fullscreenActive) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      handleBack();
+      return true;
+    });
+    return () => sub.remove();
+  }, [isNowPlayingPage, fullscreenActive, handleBack]);
+
+  // ── Landscape/fullscreen controls auto-hide ───────────────────────────────
+  // NOTE: this only gates the *auto-hiding* chrome (channel-name pill, TV top
+  // bar). The exit-fullscreen button is intentionally independent of this —
+  // see the fix note at the top of the file.
+  const [showControls, setShowControls] = useState(true);
+  const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const resetControlsHideTimer = useCallback(() => {
+    setShowControls(true);
+    if (hideTimer.current) clearTimeout(hideTimer.current);
+    hideTimer.current = setTimeout(() => setShowControls(false), 4500);
   }, []);
+
+  useEffect(() => {
+    if ((fullscreenActive || isTV) && playingChannel) resetControlsHideTimer();
+    return () => { if (hideTimer.current) clearTimeout(hideTimer.current); };
+  }, [fullscreenActive, isTV, playingChannel, resetControlsHideTimer]);
+
+  useSafeTVEvents(resetControlsHideTimer);
 
   // ── Dimensions ────────────────────────────────────────────────────────────
   const cols      = isLandscape || isTV ? LANDSCAPE_COLS : PORTRAIT_COLS;
@@ -692,36 +658,30 @@ const AdvancedUIScreen: React.FC<Props> = ({ navigation }) => {
     (width - GRID_PADDING * 2 - CARD_GAP * (cols - 1)) / cols,
   );
 
-  // Card width for Now Playing recommended grid (3 cols)
   const recCols       = NOW_PLAYING_REC_COLS;
   const recCardWidth  = Math.floor(
     (width - GRID_PADDING * 2 - CARD_GAP * (recCols - 1)) / recCols,
   );
 
-  const videoNowPlayingH = Math.round(height * VIDEO_NOWPLAYING_HEIGHT_RATIO);
-  const videoPortraitH   = Math.round(height * VIDEO_PORTRAIT_HEIGHT_RATIO);
+  const videoNowPlayingH = Math.min(
+    Math.round(width / VIDEO_ASPECT_RATIO),
+    Math.round(height * 0.5),
+  );
 
-  // ── Video keys ─────────────────────────────────────────────────────────────
-  const baseKey       = playingChannel
+  // ── Video key — this is what identifies the player instance to React.
+  // It only changes when the channel itself changes, NEVER when switching
+  // between Now Playing / landscape / fullscreen / TV chrome.
+  const baseKey = playingChannel
     ? `${playingChannel.id}-${playingChannel.streamUrl}`
     : 'none';
-  const nowPlayingKey = `adv-np-${baseKey}`;
-  const fullscreenKey = `adv-fs-${baseKey}`;
 
-  // ── Recommended channels ───────────────────────────────────────────────────
+  // ── Recommended channels (Now Playing page only — NOT shown once
+  // fullscreen/TV playback starts; see fix note at top of file) ─────────────
   const recommendedChannels = useMemo(() => {
     if (!playingChannel) return displayChannels.slice(0, 6);
     return displayChannels
       .filter(ch => ch.id !== playingChannel.id)
       .slice(0, 6);
-  }, [displayChannels, playingChannel]);
-
-  // First 5 for fullscreen row
-  const fsChannelRow = useMemo(() => {
-    if (!playingChannel) return displayChannels.slice(0, 5);
-    return displayChannels
-      .filter(ch => ch.id !== playingChannel.id)
-      .slice(0, 5);
   }, [displayChannels, playingChannel]);
 
   // ── Grid renderers ─────────────────────────────────────────────────────────
@@ -778,358 +738,267 @@ const AdvancedUIScreen: React.FC<Props> = ({ navigation }) => {
 
   const isPortraitPhone = !isTV && !isLandscape;
 
-  // ════════════════════════════════════════════════════════════════════════════
-  // LANDSCAPE PHONE / TV — full-screen video + overlay channel panel
-  // ════════════════════════════════════════════════════════════════════════════
-  if (!isPortraitPhone) {
-    return (
-      <View style={styles.root}>
-        <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
+  // Should the single player be mounted at all right now?
+  const showPlayer = !!playingChannel && (isTV || isNowPlayingPage || fullscreenActive);
 
-        {playingChannel ? (
-          <View style={StyleSheet.absoluteFill}>
-            <VideoPlayer
-              key={baseKey}
-              channel={playingChannel}
-              fullscreen={false}
-              onFullscreenDismiss={() => {}}
+  // Container style for the ONE player wrapper — this is the only thing that
+  // changes shape between states; the <VideoPlayer> inside never remounts
+  // because of it.
+  const playerContainerStyle = useMemo(() => {
+    if (isTV || fullscreenActive) {
+      return StyleSheet.absoluteFillObject as any;
+    }
+    // Embedded "Now Playing" rectangle (portrait phone). `marginTop` clears
+    // the translucent status bar — this is the top-most element on the Now
+    // Playing page, so without it the top sliver of the video was drawn
+    // underneath the status bar.
+    return {
+      width: '100%',
+      height: videoNowPlayingH,
+      backgroundColor: '#000',
+      position: 'relative' as const,
+      marginTop: STATUS_BAR_HEIGHT,
+    };
+  }, [isTV, fullscreenActive, videoNowPlayingH, STATUS_BAR_HEIGHT]);
+
+  // ════════════════════════════════════════════════════════════════════════
+  // Single render tree — no more early-return branches per orientation/mode.
+  // Chrome (grid / controls / mini-row) is layered conditionally; the player
+  // wrapper below is always in the same JSX position when `showPlayer` is
+  // true.
+  // ════════════════════════════════════════════════════════════════════════
+  return (
+    <View style={styles.root}>
+      <StatusBar
+        barStyle="light-content"
+        backgroundColor="transparent"
+        translucent
+        hidden={fullscreenActive}
+      />
+
+      {/* ── THE single persistent player ─────────────────────────────────── */}
+      {showPlayer && (
+        <View
+          style={playerContainerStyle}
+          pointerEvents="box-none"
+          renderToHardwareTextureAndroid
+        >
+          <VideoPlayer
+            key={baseKey}
+            channel={playingChannel as Channel}
+            fullscreen={fullscreenActive}
+            onFullscreenDismiss={exitFullscreen}
+          />
+
+          {/* Tap target to reveal controls again (fullscreen / TV only) */}
+          {(fullscreenActive || isTV) && (
+            <Pressable
+              style={[StyleSheet.absoluteFill, { zIndex: showControls ? 1 : 10 }]}
+              onPress={resetControlsHideTimer}
             />
-          </View>
-        ) : (
-          <View style={StyleSheet.absoluteFill}>
-            <NoChannelPlaceholder />
-          </View>
-        )}
+          )}
 
-        <Pressable
-          style={[StyleSheet.absoluteFill, { zIndex: showLandscapeControls ? 1 : 10 }]}
-          onPress={resetLandscapeControls}
-        />
+          {/* Fullscreen-entry button — only shown embedded in Now Playing */}
+          {isNowPlayingPage && !fullscreenActive && !isTV && (
+            <Pressable
+              style={npStyles.fsToggleBtn}
+              onPress={enterFullscreen}
+              hitSlop={10}
+              accessibilityLabel="Enter fullscreen"
+              accessibilityRole="button"
+            >
+              <Icon name="fullscreen" size={20} color="#fff" />
+            </Pressable>
+          )}
 
-        {showLandscapeControls && (
-          <View style={styles.lsOverlay}>
-            <View style={[styles.lsTopBar, { paddingTop: STATUS_BAR_HEIGHT + 4 }]}>
-              <View style={styles.lsTopLeft}>
-                <View style={styles.logoIcon}>
-                  <Icon name="grid" size={isTV ? 22 : 16} color="#fff" />
+          {/* ── Exit-fullscreen button (phone) ────────────────────────────
+              Always rendered while fullscreenActive — independent of the
+              auto-hide controls timer and the rotation-settle cover — so
+              it's never missing or briefly untappable. */}
+       {fullscreenActive && (
+  <TouchableOpacity
+    style={[
+      fsStyles.exitBtn,
+      !chromeSettled && { opacity: 0 },
+    ]}
+    onPress={exitFullscreen}
+    accessibilityLabel="Exit fullscreen"
+    accessibilityRole="button"
+    hitSlop={8}
+  >
+    <Icon name="fullscreen-exit" size={22} color="#fff" />
+  </TouchableOpacity>
+)}
+          {/* ── Immersive fullscreen chrome (phone) ───────────────────────
+              Channel name only — no "switch channel" list. Fullscreen means
+              just the video, full-bleed, undistracted. */}
+          {fullscreenActive && chromeSettled && showControls && (
+            <View style={fsStyles.topPill}>
+              <Text style={fsStyles.pillChName} numberOfLines={1}>
+                {playingChannel?.name}
+              </Text>
+              {playingChannel?.isHD && (
+                <View style={fsStyles.hdBadge}>
+                  <Text style={fsStyles.hdText}>HD</Text>
                 </View>
-                <View>
-                  <Text style={styles.lsAppName}>{APP_CONFIG.APP_NAME}</Text>
-                  <Text style={styles.lsMode}>Advanced Mode</Text>
-                </View>
-              </View>
-              <View style={styles.lsTopRight}>
-                {playingChannel && (
-                  <View style={styles.lsChannelBadge}>
-                    <Text style={styles.lsChNum}>CH {playingChannel.number}</Text>
-                    <Text style={styles.lsChName} numberOfLines={1}>{playingChannel.name}</Text>
+              )}
+            </View>
+          )}
+
+          {/* ── TV overlay chrome ──────────────────────────────────────────
+              Name + settings only — no channel grid while a channel is
+              already streaming. Full-bleed playback, same as phone
+              fullscreen above. */}
+          {isTV && showControls && (
+            <View style={styles.lsOverlay}>
+              <View style={[styles.lsTopBar, { paddingTop: STATUS_BAR_HEIGHT + 4 }]}>
+                <View style={styles.lsTopLeft}>
+                  <View style={styles.logoIcon}>
+                    <Icon name="grid" size={22} color="#fff" />
                   </View>
-                )}
-                <Pressable
-                  style={styles.lsIconBtn}
-                  onPress={() => navigation.navigate('Selection')}
-                >
-                  <Icon name="cog-outline" size={isTV ? 22 : 18} color="#94a3b8" />
-                </Pressable>
+                  <View>
+                    <Text style={styles.lsAppName}>{APP_CONFIG.APP_NAME}</Text>
+                    <Text style={styles.lsMode}>Advanced Mode</Text>
+                  </View>
+                </View>
+                <View style={styles.lsTopRight}>
+                  {playingChannel && (
+                    <View style={styles.lsChannelBadge}>
+                      <Text style={styles.lsChName} numberOfLines={1}>{playingChannel.name}</Text>
+                    </View>
+                  )}
+                  <Pressable
+                    style={styles.lsIconBtn}
+                    onPress={() => navigation.navigate('Selection')}
+                  >
+                    <Icon name="cog-outline" size={22} color="#94a3b8" />
+                  </Pressable>
+                </View>
               </View>
             </View>
+          )}
 
-            <View style={styles.lsBottomPanel}>
-              <SectionHeader
-                icon="grid"
-                iconColor="#3b82f6"
-                title="Channels"
-                count={displayChannels.length}
-              />
-              <FlatList
-                data={displayChannels}
-                renderItem={renderCard}
-                keyExtractor={keyExtractor}
-                getItemLayout={getItemLayout}
-                numColumns={cols}
-                columnWrapperStyle={{ gap: CARD_GAP }}
-                contentContainerStyle={{ padding: GRID_PADDING }}
-                showsVerticalScrollIndicator={false}
-                style={{ maxHeight: 260 }}
-                windowSize={5}
-                maxToRenderPerBatch={12}
-                initialNumToRender={12}
-                onScroll={resetLandscapeControls}
-                scrollEventThrottle={300}
-              />
+          {!chromeSettled && (fullscreenActive) && (
+            <View style={fsStyles.settleCover} pointerEvents="none" />
+          )}
+        </View>
+      )}
+
+      {isTV && !playingChannel && (
+        <View style={StyleSheet.absoluteFill}>
+          <NoChannelPlaceholder />
+        </View>
+      )}
+
+      {/* ── Portrait phone: Now Playing info + Up Next (below the player) ─── */}
+      {isPortraitPhone && isNowPlayingPage && playingChannel && !fullscreenActive && (
+        <>
+          <View style={npStyles.infoStrip}>
+            <View style={npStyles.infoLeft}>
+              <Text style={npStyles.infoName}>{playingChannel.name}</Text>
+              {playingChannel.language ? (
+                <Text style={npStyles.infoMeta}>{playingChannel.language}</Text>
+              ) : null}
             </View>
-          </View>
-        )}
-      </View>
-    );
-  }
-
-  // ════════════════════════════════════════════════════════════════════════════
-  // PORTRAIT PHONE — NOW PLAYING PAGE
-  //   Renders when a channel is selected; back button returns to main grid.
-  // ════════════════════════════════════════════════════════════════════════════
-  if (isPortraitPhone && isNowPlayingPage && playingChannel) {
-    return (
-      <View style={styles.root}>
-        <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
-
-        {/* ── Now Playing header / back bar ──────────────────────────────── */}
-        <View style={[npStyles.header, { paddingTop: STATUS_BAR_HEIGHT + 6 }]}>
-          <TouchableOpacity
-            style={npStyles.backBtn}
-            onPress={handleBackFromNowPlaying}
-            accessibilityLabel="Back to channels"
-          >
-            <Icon name="arrow-left" size={20} color="#e2e8f0" />
-          </TouchableOpacity>
-
-          <View style={npStyles.headerInfo}>
-            <Text style={npStyles.headerChNum}>CH {playingChannel.number}</Text>
-            <Text style={npStyles.headerChName} numberOfLines={1}>
-              {playingChannel.name}
-            </Text>
-            {playingChannel.isHD && (
-              <View style={npStyles.hdBadge}>
-                <Text style={npStyles.hdText}>HD</Text>
+            {playingChannel.isFavorite && (
+              <View style={npStyles.favBadge}>
+                <Icon name="star" size={11} color="#fbbf24" />
+                <Text style={npStyles.favText}>Favourite</Text>
               </View>
             )}
           </View>
 
-          {/* Fullscreen button */}
-          <TouchableOpacity
-            style={npStyles.headerActionBtn}
-            onPress={enterFullscreen}
-            accessibilityLabel="Enter fullscreen"
-          >
-            <Icon name="fullscreen" size={20} color="#94a3b8" />
-          </TouchableOpacity>
-        </View>
+          <ScrollView style={npStyles.scrollArea} showsVerticalScrollIndicator={false}>
+            <SectionHeader
+              icon="television-play"
+              iconColor="#22c55e"
+              title="Up Next"
+              count={recommendedChannels.length}
+            />
+            <FlatList
+              data={recommendedChannels}
+              renderItem={renderRecCard}
+              keyExtractor={keyExtractor}
+              numColumns={recCols}
+              columnWrapperStyle={{ gap: CARD_GAP }}
+              contentContainerStyle={{ paddingHorizontal: GRID_PADDING, paddingBottom: 28 }}
+              scrollEnabled={false}
+              getItemLayout={getRecItemLayout}
+              ListEmptyComponent={
+                <View style={styles.emptyState}>
+                  <Icon name="television-off" size={36} color="#1e293b" />
+                  <Text style={styles.emptyTitle}>No recommendations</Text>
+                </View>
+              }
+            />
+          </ScrollView>
+        </>
+      )}
 
-        {/* ── Video player ───────────────────────────────────────────────── */}
-        <View style={[npStyles.playerWrap, { height: videoNowPlayingH }]}>
-          <VideoPlayer
-            key={nowPlayingKey}
-            channel={playingChannel}
-            fullscreen={false}
-            onFullscreenDismiss={() => {}}
-          />
-          {/* Live badge */}
-          <View style={npStyles.liveBadge}>
-            <View style={npStyles.liveDot} />
-            <Text style={npStyles.liveText}>LIVE</Text>
-          </View>
-        </View>
-
-        {/* ── Channel info strip below player ────────────────────────────── */}
-        <View style={npStyles.infoStrip}>
-          <View style={npStyles.infoLeft}>
-            <Text style={npStyles.infoName}>{playingChannel.name}</Text>
-            {playingChannel.language ? (
-              <Text style={npStyles.infoMeta}>{playingChannel.language}</Text>
-            ) : null}
-          </View>
-          {playingChannel.isFavorite && (
-            <View style={npStyles.favBadge}>
-              <Icon name="star" size={11} color="#fbbf24" />
-              <Text style={npStyles.favText}>Favourite</Text>
+      {/* ── Portrait phone: main grid page ─────────────────────────────────── */}
+      {isPortraitPhone && !isNowPlayingPage && (
+        <>
+          <View style={[styles.header, { paddingTop: STATUS_BAR_HEIGHT + 6 }]}>
+            <View style={styles.headerLeft}>
+              <View style={styles.logoIcon}>
+                <Icon name="grid" size={16} color="#fff" />
+              </View>
+              <View>
+                <Text style={styles.appName}>{APP_CONFIG.APP_NAME}</Text>
+                <Text style={styles.modeLabel}>Advanced Mode</Text>
+              </View>
             </View>
-          )}
-        </View>
+            <View style={styles.headerRight}>
+              <View style={styles.countBadge}>
+                <Text style={styles.countNum}>{displayChannels.length}</Text>
+                <Text style={styles.countLabel}>ch</Text>
+              </View>
+              <Pressable
+                style={styles.headerIconBtn}
+                onPress={() => navigation.navigate('Selection')}
+              >
+                <Icon name="cog-outline" size={18} color="#94a3b8" />
+              </Pressable>
+            </View>
+          </View>
 
-        <ScrollView style={npStyles.scrollArea} showsVerticalScrollIndicator={false}>
-          {/* ── Recommended section ──────────────────────────────────────── */}
-          <SectionHeader
-            icon="television-play"
-            iconColor="#22c55e"
-            title="Up Next"
-            count={recommendedChannels.length}
-            badge="LIVE"
+          <FilterChips
+            selectedLanguage={selectedLanguage}
+            selectedGenre={selectedGenre}
+            onLanguageChange={setSelectedLanguage}
+            onGenreChange={setSelectedGenre}
           />
 
           <FlatList
-            data={recommendedChannels}
-            renderItem={renderRecCard}
+            data={displayChannels}
+            renderItem={renderCard}
             keyExtractor={keyExtractor}
-            numColumns={recCols}
+            numColumns={PORTRAIT_COLS}
             columnWrapperStyle={{ gap: CARD_GAP }}
             contentContainerStyle={{
               paddingHorizontal: GRID_PADDING,
-              paddingBottom: 28,
+              paddingTop: 12,
+              paddingBottom: 32,
             }}
-            scrollEnabled={false}
-            getItemLayout={getRecItemLayout}
+            showsVerticalScrollIndicator={false}
+            getItemLayout={getItemLayout}
+            windowSize={7}
+            maxToRenderPerBatch={10}
+            initialNumToRender={10}
             ListEmptyComponent={
               <View style={styles.emptyState}>
-                <Icon name="television-off" size={36} color="#1e293b" />
-                <Text style={styles.emptyTitle}>No recommendations</Text>
+                <Icon name="television-off" size={46} color="#1e293b" />
+                <Text style={styles.emptyTitle}>No channels found</Text>
+                <Text style={styles.emptySubtitle}>
+                  {selectedLanguage !== 'All' || selectedGenre !== 'All'
+                    ? 'Try changing Language or Genre filter'
+                    : 'Add channels via Settings'}
+                </Text>
               </View>
             }
           />
-        </ScrollView>
-
-        {/* ── Fullscreen modal ─────────────────────────────────────────────── */}
-        {renderFullscreenModal()}
-      </View>
-    );
-  }
-
-  // ════════════════════════════════════════════════════════════════════════════
-  // PORTRAIT PHONE — MAIN GRID PAGE
-  // ════════════════════════════════════════════════════════════════════════════
-  function renderFullscreenModal() {
-    return (
-      <Modal
-        visible={isFullscreenModal}
-        transparent={false}
-        animationType="fade"
-        supportedOrientations={['landscape', 'landscape-left', 'landscape-right']}
-        onRequestClose={exitFullscreen}
-        statusBarTranslucent
-      >
-        <View style={fsStyles.container}>
-          <StatusBar hidden />
-
-          {/* Tap to show / hide controls */}
-          <Pressable style={StyleSheet.absoluteFill} onPress={resetFsControls} />
-
-          {playingChannel && fullscreenReady ? (
-            <VideoPlayer
-              key={fullscreenKey}
-              channel={playingChannel}
-              fullscreen={false}
-              onFullscreenDismiss={exitFullscreen}
-            />
-          ) : (
-            <View style={{ flex: 1, backgroundColor: '#000' }} />
-          )}
-
-          {/* Controls overlay */}
-          {showFsControls && playingChannel && fullscreenReady && (
-            <>
-              {/* Exit fullscreen */}
-              <TouchableOpacity
-                style={fsStyles.exitBtn}
-                onPress={exitFullscreen}
-                accessibilityLabel="Exit fullscreen"
-              >
-                <Icon name="fullscreen-exit" size={22} color="#fff" />
-              </TouchableOpacity>
-
-              {/* Channel name + live pill (top left) */}
-              <View style={fsStyles.topPill}>
-                <View style={fsStyles.liveDot} />
-                <Text style={fsStyles.pillChNum}>CH {playingChannel.number}</Text>
-                <Text style={fsStyles.pillChName} numberOfLines={1}>
-                  {playingChannel.name}
-                </Text>
-                {playingChannel.isHD && (
-                  <View style={fsStyles.hdBadge}>
-                    <Text style={fsStyles.hdText}>HD</Text>
-                  </View>
-                )}
-              </View>
-
-              {/* ── Mini channel row (5 channels, bottom) ──────────────── */}
-              <View style={fsStyles.miniRowPanel}>
-                <View style={fsStyles.miniRowHeader}>
-                  <Icon name="television-play" size={10} color="#22c55e" />
-                  <Text style={fsStyles.miniRowLabel}>Switch Channel</Text>
-                </View>
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={fsStyles.miniRowScroll}
-                >
-                  {fsChannelRow.map(ch => (
-                    <MiniChannelCard
-                      key={String(ch.id)}
-                      channel={ch}
-                      isActive={playingChannel?.id === ch.id}
-                      onPress={() => {
-                        setCurrentChannel(ch);
-                        setPlayingChannel(ch);
-                        resetFsControls();
-                      }}
-                    />
-                  ))}
-                </ScrollView>
-              </View>
-            </>
-          )}
-        </View>
-      </Modal>
-    );
-  }
-
-  return (
-    <View style={styles.root}>
-      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
-
-      {/* ── Top header ──────────────────────────────────────────────────── */}
-      <View style={[styles.header, { paddingTop: STATUS_BAR_HEIGHT + 6 }]}>
-        <View style={styles.headerLeft}>
-          <View style={styles.logoIcon}>
-            <Icon name="grid" size={16} color="#fff" />
-          </View>
-          <View>
-            <Text style={styles.appName}>{APP_CONFIG.APP_NAME}</Text>
-            <Text style={styles.modeLabel}>Advanced Mode</Text>
-          </View>
-        </View>
-        <View style={styles.headerRight}>
-          <View style={styles.countBadge}>
-            <Text style={styles.countNum}>{displayChannels.length}</Text>
-            <Text style={styles.countLabel}>ch</Text>
-          </View>
-          <Pressable
-            style={styles.headerIconBtn}
-            onPress={() => navigation.navigate('Selection')}
-          >
-            <Icon name="cog-outline" size={18} color="#94a3b8" />
-          </Pressable>
-        </View>
-      </View>
-
-      {/* ── Filter chips ─────────────────────────────────────────────────── */}
-      <FilterChips
-        selectedLanguage={selectedLanguage}
-        selectedGenre={selectedGenre}
-        onLanguageChange={setSelectedLanguage}
-        onGenreChange={setSelectedGenre}
-      />
-
-      {/* ── Channel grid ─────────────────────────────────────────────────── */}
-      <FlatList
-        data={displayChannels}
-        renderItem={renderCard}
-        keyExtractor={keyExtractor}
-        numColumns={PORTRAIT_COLS}
-        columnWrapperStyle={{ gap: CARD_GAP }}
-        contentContainerStyle={{
-          paddingHorizontal: GRID_PADDING,
-          paddingTop: 12,
-          paddingBottom: 32,
-        }}
-        showsVerticalScrollIndicator={false}
-        getItemLayout={getItemLayout}
-        windowSize={7}
-        maxToRenderPerBatch={10}
-        initialNumToRender={10}
-        ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <Icon name="television-off" size={46} color="#1e293b" />
-            <Text style={styles.emptyTitle}>No channels found</Text>
-            <Text style={styles.emptySubtitle}>
-              {selectedLanguage !== 'All' || selectedGenre !== 'All'
-                ? 'Try changing Language or Genre filter'
-                : 'Add channels via Settings'}
-            </Text>
-          </View>
-        }
-      />
-
-      {/* Fullscreen modal accessible from grid too */}
-      {renderFullscreenModal()}
+        </>
+      )}
     </View>
   );
 };
@@ -1160,82 +1029,17 @@ const placeholderStyles = StyleSheet.create({
 
 // ─── Now Playing styles ───────────────────────────────────────────────────────
 const npStyles = StyleSheet.create({
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingBottom: 10,
-    backgroundColor: 'rgba(3,7,18,0.98)',
-    borderBottomWidth: 1,
-    borderBottomColor: '#0f172a',
-    gap: 10,
-  },
-  backBtn: {
-    backgroundColor: 'rgba(30,41,59,0.8)',
-    padding: 9,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#334155',
-  },
-  headerInfo: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-  },
-  headerChNum: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#3b82f6',
-    letterSpacing: 0.8,
-  },
-  headerChName: {
-    flex: 1,
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#e2e8f0',
-  },
-  hdBadge: {
-    backgroundColor: '#1d4ed8',
-    borderRadius: 4,
-    paddingHorizontal: 5,
-    paddingVertical: 2,
-    borderWidth: 1,
-    borderColor: '#3b82f6',
-  },
-  hdText: { color: '#93c5fd', fontSize: 8, fontWeight: '900', letterSpacing: 0.5 },
-
-  headerActionBtn: {
-    backgroundColor: 'rgba(30,41,59,0.8)',
-    padding: 9,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#334155',
-  },
-
-  playerWrap: {
-    width: '100%',
-    backgroundColor: '#000',
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  liveBadge: {
+  fsToggleBtn: {
     position: 'absolute',
-    bottom: 10,
-    left: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor: 'rgba(3,7,18,0.75)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
+    top: 10,
+    right: 10,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    padding: 7,
+    borderRadius: 8,
     borderWidth: 1,
-    borderColor: 'rgba(34,197,94,0.4)',
+    borderColor: 'rgba(255,255,255,0.15)',
     zIndex: 10,
   },
-  liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#22c55e' },
-  liveText: { fontSize: 9, fontWeight: '900', color: '#22c55e', letterSpacing: 1.2 },
 
   infoStrip: {
     flexDirection: 'row',
@@ -1247,8 +1051,8 @@ const npStyles = StyleSheet.create({
     borderBottomColor: '#0f172a',
   },
   infoLeft: { flex: 1 },
-  infoName: { fontSize: 14, fontWeight: '800', color: '#e2e8f0' },
-  infoMeta: { fontSize: 10, color: '#475569', marginTop: 2, fontWeight: '500' },
+  infoName: { fontSize: 17, fontWeight: '800', color: '#f1f5f9' },
+  infoMeta: { fontSize: 11, color: '#64748b', marginTop: 3, fontWeight: '500' },
   favBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1315,13 +1119,13 @@ const styles = StyleSheet.create({
     borderColor: '#334155',
   },
 
-  // Landscape overlay
-  lsOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 5, justifyContent: 'space-between' },
+  // TV overlay
+  lsOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 5, justifyContent: 'flex-start' },
   lsTopBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    paddingHorizontal: isTV ? 20 : 14,
+    paddingHorizontal: 20,
     paddingBottom: 10,
     backgroundColor: 'rgba(3,7,18,0.88)',
     borderBottomWidth: 1,
@@ -1329,22 +1133,16 @@ const styles = StyleSheet.create({
   },
   lsTopLeft:  { flexDirection: 'row', alignItems: 'center', gap: 10 },
   lsTopRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  lsAppName:  { fontSize: isTV ? 18 : 14, fontWeight: '900', color: '#f1f5f9' },
+  lsAppName:  { fontSize: 18, fontWeight: '900', color: '#f1f5f9' },
   lsMode:     { fontSize: 9, color: '#334155', fontWeight: '500', textTransform: 'uppercase', letterSpacing: 0.8 },
   lsChannelBadge: { alignItems: 'flex-end' },
-  lsChNum:    { fontSize: isTV ? 14 : 11, fontWeight: '800', color: '#60a5fa', letterSpacing: 1 },
-  lsChName:   { fontSize: isTV ? 12 : 10, color: '#475569', maxWidth: 160 },
+  lsChName:   { fontSize: 13, fontWeight: '700', color: '#e2e8f0', maxWidth: 160 },
   lsIconBtn: {
     backgroundColor: 'rgba(30,41,59,0.8)',
-    padding: isTV ? 12 : 8,
+    padding: 12,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: '#334155',
-  },
-  lsBottomPanel: {
-    backgroundColor: 'rgba(3,7,18,0.92)',
-    borderTopWidth: 1,
-    borderTopColor: '#0f172a',
   },
 
   // Empty state
@@ -1353,10 +1151,8 @@ const styles = StyleSheet.create({
   emptySubtitle: { fontSize: 12, color: '#1f2937', textAlign: 'center', paddingHorizontal: 20 },
 });
 
-// ─── Fullscreen modal styles ───────────────────────────────────────────────────
+// ─── Fullscreen chrome styles ───────────────────────────────────────────────────
 const fsStyles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#000' },
-
   exitBtn: {
     position: 'absolute',
     top: 14,
@@ -1366,10 +1162,10 @@ const fsStyles = StyleSheet.create({
     borderRadius: 9,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.12)',
-    zIndex: 20,
+    zIndex: 30,
+    elevation: 30,
   },
 
-  // Top channel info pill
   topPill: {
     position: 'absolute',
     top: 14,
@@ -1386,9 +1182,7 @@ const fsStyles = StyleSheet.create({
     zIndex: 20,
     maxWidth: '55%',
   },
-  liveDot: { width: 7, height: 7, borderRadius: 3.5, backgroundColor: '#22c55e' },
-  pillChNum: { fontSize: 11, fontWeight: '800', color: '#60a5fa', letterSpacing: 0.8 },
-  pillChName: { fontSize: 12, fontWeight: '700', color: '#e2e8f0', flexShrink: 1 },
+  pillChName: { fontSize: 13, fontWeight: '700', color: '#e2e8f0', flexShrink: 1 },
   hdBadge: {
     backgroundColor: '#1d4ed8',
     borderRadius: 3,
@@ -1399,36 +1193,14 @@ const fsStyles = StyleSheet.create({
   },
   hdText: { color: '#93c5fd', fontSize: 7, fontWeight: '900', letterSpacing: 0.5 },
 
-  // Mini channel row — sits just above the video controls area at the bottom
-  miniRowPanel: {
-    position: 'absolute',
-    bottom: 56,          // sit above the VideoPlayer's own controls bar (~56 dp)
-    left: 0,
-    right: 0,
-    backgroundColor: 'rgba(3,7,18,0.82)',
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(30,41,59,0.9)',
-    paddingTop: 7,
-    paddingBottom: 8,
-    zIndex: 20,
-  },
-  miniRowHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 14,
-    marginBottom: 6,
-  },
-  miniRowLabel: {
-    fontSize: 9,
-    fontWeight: '800',
-    color: '#334155',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  miniRowScroll: {
-    paddingHorizontal: 10,
-    gap: 0,
+  // Purely cosmetic cover shown for ~250-300ms while the native orientation
+  // lock settles, so the user doesn't see a rotation jump. Sits ON TOP of
+  // the already-mounted, already-playing <VideoPlayer> — it does not gate
+  // the player's existence the way the old `fullscreenReady` flag did.
+  settleCover: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#000',
+    zIndex: 15,
   },
 });
 

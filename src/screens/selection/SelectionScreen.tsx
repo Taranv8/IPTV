@@ -88,22 +88,17 @@ const card1Ref = useRef<View>(null);
   const isPortrait  = height >= width;
   // isPhone: true when the shorter screen dimension is phone-sized
   const isPhone     = Math.min(width, height) < 500;
+  const isAndroidPhone = Platform.OS === 'android' && isPhone;
   const isLandPhone = !isPortrait && isPhone;   // landscape phone e.g. 720×360
   const isPortPhone =  isPortrait && isPhone;   // portrait phone  e.g. 390×844
 
-  // NEW: Flag for Android phones specifically
-  const isAndroidPhone = Platform.OS === 'android' && isPhone;
-
-  // Force initial selection to 'advanced' on Android phones, otherwise use saved setting
-  const [selectedUI, setSelectedUI] = useState<'simple' | 'advanced'>(
-    isAndroidPhone ? 'advanced' : uiMode
-  );
+const [selectedUI, setSelectedUI] = useState<'simple' | 'advanced'>(
+  isAndroidPhone ? 'advanced' : uiMode
+);
   const [focusedUI,  setFocusedUI]  = useState<'simple' | 'advanced' | null>(uiMode);
-
-  // Countdown: 2 seconds for Android phones, otherwise from config
-  const [countdown, setCountdown] = useState(() =>
-    isAndroidPhone ? 2 : APP_CONFIG.UI_SELECTION_COUNTDOWN
-  );
+const [countdown, setCountdown] = useState(() =>
+  isAndroidPhone ? 2 : APP_CONFIG.UI_SELECTION_COUNTDOWN
+);
   const TOTAL = APP_CONFIG.UI_SELECTION_COUNTDOWN;
 
   // ── Animations ──
@@ -116,7 +111,7 @@ const card1Ref = useRef<View>(null);
   const iconBounce2 = useRef(new Animated.Value(0)).current;
   const card1Scale  = useRef(new Animated.Value(1)).current;
 const card2Scale  = useRef(new Animated.Value(1)).current;
-const selectedUIRef = useRef<'simple' | 'advanced'>(isAndroidPhone ? 'advanced' : uiMode);
+const selectedUIRef = useRef<'simple' | 'advanced'>(uiMode);
  useEffect(() => {
   selectedUIRef.current = selectedUI;
 }, [selectedUI]);
@@ -180,14 +175,11 @@ useEffect(() => {
 }, []);
 
 const handleSelect = useCallback((mode: 'simple' | 'advanced') => {
-  // If Android phone, ignore taps on Simple UI (already disabled, but extra safety)
-  if (isAndroidPhone && mode === 'simple') return;
-  
   setSelectedUI(mode);
   setFocusedUI(mode);
-  setCountdown(isAndroidPhone ? 2 : APP_CONFIG.UI_SELECTION_COUNTDOWN);
+setCountdown(isAndroidPhone ? 2 : APP_CONFIG.UI_SELECTION_COUNTDOWN);
   popCard(mode === 'simple' ? card1Scale : card2Scale);
-}, [popCard, card1Scale, card2Scale, isAndroidPhone]);
+}, [popCard, card1Scale, card2Scale]);
 
   // ── Responsive token table ─────────────────────────────────────────────────
   //   isLandPhone  = landscape phone (most constrained on HEIGHT)
@@ -302,8 +294,6 @@ const handleSelect = useCallback((mode: 'simple' | 'advanced') => {
           { transform: [{ translateY: card1Slide }, { scale: card1Scale }] },
           // Portrait: gap below card1 (above VS divider)
           isPortrait && { marginBottom: R.card1MB },
-          // Fade out on Android phone
-          isAndroidPhone && { opacity: 0.5 },
         ]}>
          <Pressable
   ref={card1Ref}
@@ -311,9 +301,7 @@ const handleSelect = useCallback((mode: 'simple' | 'advanced') => {
 hasTVPreferredFocus
   onPress={() => handleSelect('simple')}
   onFocus={() => setFocusedUI('simple')}
-onBlur={() => setFocusedUI(prev => (prev === 'advanced' ? null : prev))}
-  disabled={isAndroidPhone}   // Disable on Android phone
-  style={[
+onBlur={() => setFocusedUI(prev => (prev === 'advanced' ? null : prev))}            style={[
               styles.card,
     { paddingVertical: R.cardPadV, paddingHorizontal: R.cardPadH },
     selectedUI === 'simple' && styles.cardSimple,
@@ -343,12 +331,6 @@ onBlur={() => setFocusedUI(prev => (prev === 'advanced' ? null : prev))}
             <Text style={[styles.cardDesc, { fontSize: R.cardDescFz, marginBottom: R.cardDescMB }]} numberOfLines={R.cardDescLine}>
               {R.cardDescTxt('Classic TV • Instant channels • Numeric keypad', 'Classic TV • Keypad')}
             </Text>
-            {/* NEW: Warning message shown only on Android phones */}
-            {isAndroidPhone && (
-              <Text style={styles.androidOnlyText}>
-                (simple screen can only be accessed in tv only)
-              </Text>
-            )}
             <View style={[styles.stripe, { backgroundColor: selectedUI === 'simple' ? '#00F5FF' : focusedUI === 'simple' ? '#A29BFE' : '#1E2030' }]} />
           </Pressable>
         </Animated.View>
@@ -382,8 +364,7 @@ onBlur={() => setFocusedUI(prev => (prev === 'advanced' ? null : prev))}
             focusable
             onPress={() => handleSelect('advanced')}
             onFocus={() => setFocusedUI('advanced')}
-onBlur={() => setFocusedUI(prev => (prev === 'advanced' ? null : prev))}
-            style={[
+onBlur={() => setFocusedUI(prev => (prev === 'advanced' ? null : prev))}            style={[
               styles.card,
               { paddingVertical: R.cardPadV, paddingHorizontal: R.cardPadH },
               selectedUI === 'advanced' && styles.cardAdvanced,
@@ -773,18 +754,6 @@ cardFocused: {
     color: '#3A4155',
     textTransform: 'uppercase',
     letterSpacing: 0.8,
-  },
-
-  // NEW: Style for the Android-only warning text inside the Simple UI card
-  androidOnlyText: {
-    fontFamily: FF.medium,
-    fontWeight: '500',
-    fontSize: 10,
-    color: '#FF4757',   // red accent for visibility
-    textAlign: 'center',
-    marginTop: 4,
-    paddingHorizontal: 8,
-    lineHeight: 14,
   },
 });
 

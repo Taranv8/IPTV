@@ -10,15 +10,14 @@ class OrientationModule(private val reactContext: ReactApplicationContext) :
 
     override fun getName(): String = "OrientationModule"
 
-    @ReactMethod
-    fun lockToLandscape() {
-        val activity = reactApplicationContext.currentActivity ?: return
-        activity.runOnUiThread {
-            activity.requestedOrientation =
-                ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-        }
+   @ReactMethod
+fun lockToLandscape() {
+    val activity = reactApplicationContext.currentActivity ?: return
+    activity.runOnUiThread {
+        activity.requestedOrientation =
+            ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE   // was SENSOR_LANDSCAPE
     }
-
+}
     @ReactMethod
     fun lockToPortrait() {
         val activity = reactApplicationContext.currentActivity ?: return

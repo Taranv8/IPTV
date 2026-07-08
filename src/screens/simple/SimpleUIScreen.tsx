@@ -58,9 +58,6 @@ const SimpleUIScreen: React.FC<Props> = ({ navigation }) => {
   const [showControls, setShowControls] = useState(true);
   const [channelPage, setChannelPage] = useState(0);
 
-  // NOTE: useOrientation will still flip when lockToLandscape() fires on the phone,
-  // but the fullscreen Modal covers the entire screen so the layout switch underneath
-  // is completely invisible to the user.
   const { isLandscape, width, height } = useOrientation();
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -70,31 +67,19 @@ const SimpleUIScreen: React.FC<Props> = ({ navigation }) => {
     default: 0,
   }) || 0;
 
-  // ─── Fullscreen modal (phone portrait → landscape video) ──────────────────
-  // We use a Modal instead of relying on the layout branch so that when
-  // lockToLandscape() causes isLandscape→true (which would flip isPortraitPhone
-  // to false and render the TV overlay), the Modal sits on top and hides it.
-  const [isFullscreenModalVisible, setIsFullscreenModalVisible] = useState(false);
-const [fullscreenVideoReady, setFullscreenVideoReady] = useState(false);   // ← ADD
-const fullscreenReadyTimer = useRef<ReturnType<typeof setTimeout> | null>(null); // ← ADD
+  // ─── Fullscreen state (uses same VideoPlayer instance, no modal) ─────────
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const handleEnterFullscreen = useCallback(() => {
-  setFullscreenVideoReady(false);                 // reset before opening  ← ADD
-  lockToLandscape();
-  setIsFullscreenModalVisible(true);
-  // Give the Surface ~300 ms to stabilise after orientation settles       ← ADD
-  if (fullscreenReadyTimer.current) clearTimeout(fullscreenReadyTimer.current);
-  fullscreenReadyTimer.current = setTimeout(() => setFullscreenVideoReady(true), 300);
-}, []);
-
-  const handleExitFullscreen = useCallback(() => {
-    setIsFullscreenModalVisible(false);   // 1. Dismiss modal first
-    lockToPortrait();                     // 2. Rotate back to portrait
-    resetPortraitControls();              // 3. Re-show portrait top bar
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    lockToLandscape();
+    setIsFullscreen(true);
   }, []);
-  // (resetPortraitControls is defined below; the eslint disable avoids a
-  //  circular dependency warning — the ref approach below is cleaner)
+
+  const handleExitFullscreenStable = useCallback(() => {
+    setIsFullscreen(false);
+    lockToPortrait();
+    resetPortraitControlsRef.current();
+  }, []);
 
   // ─── Stream source modal ──────────────────────────────────────────────────
   const [streamModalVisible, setStreamModalVisible] = useState(false);
@@ -111,24 +96,10 @@ const fullscreenReadyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     }, 3000);
   }, []);
 
-  // Wire resetPortraitControls into handleExitFullscreen via a ref so it is
+  // Wire resetPortraitControls into handleExitFullscreenStable via a ref so it is
   // always fresh without causing circular deps in useCallback.
   const resetPortraitControlsRef = useRef(resetPortraitControls);
   useEffect(() => { resetPortraitControlsRef.current = resetPortraitControls; }, [resetPortraitControls]);
-
-const handleExitFullscreenStable = useCallback(() => {
-  setFullscreenVideoReady(false);                 // tear down player first ← ADD
-  if (fullscreenReadyTimer.current) clearTimeout(fullscreenReadyTimer.current);
-  setIsFullscreenModalVisible(false);
-  lockToPortrait();
-  resetPortraitControlsRef.current();
-}, []);
-
-useEffect(() => {
-  return () => {
-    if (fullscreenReadyTimer.current) clearTimeout(fullscreenReadyTimer.current);
-  };
-}, []);
 
   useEffect(() => {
     resetPortraitControls();
@@ -138,16 +109,13 @@ useEffect(() => {
   }, [resetPortraitControls]);
 
   // ─── Video keys ───────────────────────────────────────────────────────────
-  // Two separate keys: one for the portrait strip player, one for the fullscreen
-  // modal player. This prevents the portrait player from remounting (and losing
-  // its buffer / position) when fullscreen opens/closes.
+  // Only one key needed now – the inline player expands to fullscreen.
   const baseVideoKey = useMemo(() => {
     if (!currentChannel) return 'no-channel';
     return `${currentChannel.id}-${currentChannel.streamUrl}`;
   }, [currentChannel?.id, currentChannel?.streamUrl]);
 
   const portraitVideoKey = `portrait-${baseVideoKey}`;
-  const fullscreenVideoKey = `fullscreen-${baseVideoKey}`;
 
   // ─── Landscape / TV timer ─────────────────────────────────────────────────
   const resetTimer = useCallback((active = false) => {
@@ -202,10 +170,6 @@ useEffect(() => {
   const videoPortraitH = Math.round(screenHeight * VIDEO_PORTRAIT_HEIGHT_RATIO);
   const topBarHeight = isTV ? 68 : 56;
 
-  // This flag controls which branch renders. When lockToLandscape() fires on the
-  // phone, isLandscape becomes true and isPortraitPhone flips to false — but by
-  // that time the fullscreen Modal is already covering the screen, so the user
-  // never sees the TV/landscape layout accidentally render.
   const isPortraitPhone = !isTV && !isLandscape;
 
   return (
@@ -231,9 +195,19 @@ useEffect(() => {
                 <VideoPlayer
                   key={portraitVideoKey}
                   channel={currentChannel}
-                  fullscreen={false}
-                  onFullscreenDismiss={() => {}}
+                  fullscreen={isFullscreen}              // same player, expand
+                  onFullscreenDismiss={handleExitFullscreenStable}
                 />
+                {/* Exit-fullscreen button – only visible in fullscreen */}
+                {isFullscreen && (
+                  <TouchableOpacity
+                    style={fullscreenStyles.exitBtn}
+                    onPress={handleExitFullscreenStable}
+                    accessibilityLabel="Exit full screen"
+                  >
+                    <Icon name="fullscreen-exit" size={24} color="#fff" />
+                  </TouchableOpacity>
+                )}
               </View>
             ) : (
               <View style={{ marginTop: STATUS_BAR_HEIGHT, flex: 1 }}>
@@ -242,7 +216,7 @@ useEffect(() => {
             )}
 
             {/* Top bar — auto‑hides after 3 s */}
-            {showPortraitControls && (
+            {showPortraitControls && !isFullscreen && (
               <View style={[styles.portraitTopBar, { height: topBarHeight, top: STATUS_BAR_HEIGHT }]}>
                 <AppLogo />
                 {currentChannel && (
@@ -253,7 +227,7 @@ useEffect(() => {
                   </View>
                 )}
                 <View style={styles.topBarRightIcons}>
-                  {/* Fullscreen button — opens the landscape modal */}
+                  {/* Fullscreen button */}
                   <TouchableOpacity
                     onPress={handleEnterFullscreen}
                     style={styles.iconButton}
@@ -352,47 +326,6 @@ useEffect(() => {
           )}
         </Pressable>
       )}
-
-      {/* ═══════════════════════════════════════════════════════════════════
-          FULLSCREEN LANDSCAPE MODAL  (phone only)
-          Opens on top of everything before the layout branch can flip.
-          The VideoPlayer here is a completely separate instance from the
-          portrait strip player (different key) so the strip player keeps
-          its state untouched while this modal is visible.
-      ═══════════════════════════════════════════════════════════════════ */}
-     <Modal
-  visible={isFullscreenModalVisible}
-  transparent={false}
-  animationType="fade"
-  supportedOrientations={['landscape', 'landscape-left', 'landscape-right']}
-  onRequestClose={handleExitFullscreenStable}
-  statusBarTranslucent
->
-  <View style={fullscreenStyles.container}>
-    <StatusBar hidden />
-
-    {/* ↓ Only mount VideoPlayer once the Surface is layout-stable */}
-    {currentChannel && fullscreenVideoReady ? (
-      <VideoPlayer
-        key={fullscreenVideoKey}
-        channel={currentChannel}
-        fullscreen={false}
-        onFullscreenDismiss={handleExitFullscreenStable}
-      />
-    ) : (
-      // Show a black screen while waiting — prevents the frozen-frame flash
-      <View style={{ flex: 1, backgroundColor: '#000' }} />
-    )}
-
-    <TouchableOpacity
-      style={fullscreenStyles.exitBtn}
-      onPress={handleExitFullscreenStable}
-      accessibilityLabel="Exit full screen"
-    >
-      <Icon name="fullscreen-exit" size={24} color="#fff" />
-    </TouchableOpacity>
-  </View>
-</Modal>
 
       {/* ── Stream source modal ─────────────────────────────────────────────── */}
       <Modal
@@ -625,11 +558,6 @@ const styles = StyleSheet.create({
 });
 
 const fullscreenStyles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#000',
-    justifyContent: 'center',
-  },
   exitBtn: {
     position: 'absolute',
     top: 16,

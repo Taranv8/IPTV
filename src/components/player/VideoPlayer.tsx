@@ -38,7 +38,7 @@ import {
   AppState,
   AppStateStatus,
 } from 'react-native';
-import Video, { OnLoadData, DRMType } from 'react-native-video';
+import Video ,  { OnLoadData, DRMType, ViewType } from 'react-native-video';
 import { Channel } from '../../types/channel';
 import {
   StreamResolver,
@@ -633,38 +633,33 @@ const VideoPlayerInner: React.FC<Props> = ({ channel, fullscreen = false, onFull
     >
       {stream && containerReady && (
         <View style={[styles.videoWrapper, { pointerEvents: 'none' }]}>
-          <Video
-            // ── CHANGED: include streamRestartKey so a hard restart on the
-            // same URL still gives React a new key and forces a full remount.
-            key={`${stream.url}-${streamRestartKey}`}
-            ref={videoRef}
-            source={{
-              uri:     stream.url,
-              type:    stream.type,
-              headers: sourceHeaders,
-            }}
-            style={styles.video}
-            resizeMode="contain"
-            bufferConfig={BUFFER_CONFIG}
-            paused={!appActive}
-            repeat={false}
-            playInBackground={false}
-            playWhenInactive={false}
-            ignoreSilentSwitch="ignore"
-            minLoadRetryCount={0}
-            automaticallyWaitsToMinimizeStalling={false}
-            reportBandwidth={true}
-            onLoadStart={handleLoadStart}
-            onLoad={handleLoad}
-            onReadyForDisplay={handleReadyForDisplay}
-            onError={handleError}
-            fullscreen={fullscreen}
-            onFullscreenPlayerWillDismiss={onFullscreenDismiss}
-            onBuffer={handleBuffer}
-            focusable={false}
-            {...(drmProp ? { drm: drmProp } : {})}
-            {...(Platform.isTV ? { isTVSelectable: false } : {})}
-          />
+        <Video
+  key={`${stream.url}-${streamRestartKey}`}
+  ref={videoRef}
+  source={{ uri: stream.url, type: stream.type, headers: sourceHeaders }}
+  style={styles.video}
+  resizeMode="contain"
+  bufferConfig={BUFFER_CONFIG}
+  paused={!appActive}
+  repeat={false}
+  playInBackground={false}
+  playWhenInactive={false}
+  ignoreSilentSwitch="ignore"
+  minLoadRetryCount={0}
+  automaticallyWaitsToMinimizeStalling={false}
+  reportBandwidth={true}
+  onLoadStart={handleLoadStart}
+  onLoad={handleLoad}
+  onReadyForDisplay={handleReadyForDisplay}
+  onError={handleError}
+  onBuffer={handleBuffer}
+  focusable={false}
+  viewType={ViewType.TEXTURE}
+  {...(drmProp ? { drm: drmProp } : {})}
+  {...(Platform.isTV ? { isTVSelectable: false } : {})}
+  // ❌ remove: fullscreen={fullscreen}
+  // ❌ remove: onFullscreenPlayerWillDismiss={onFullscreenDismiss}
+/>
         </View>
       )}
 
