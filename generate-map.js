@@ -1,8 +1,8 @@
 const fs = require("fs");
 const path = require("path");
 
-const SRC_DIR = path.join(__dirname, "android");
-const OUTPUT_FILE = path.join(__dirname, "android-map.txt");
+const SRC_DIR = path.join(__dirname, "src");
+const OUTPUT_FILE = path.join(__dirname, "src-map.txt");
 
 function generateTree(dir, prefix = "") {
   let result = "";

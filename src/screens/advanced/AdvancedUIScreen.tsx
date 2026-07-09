@@ -63,6 +63,51 @@
 //   renders in both the embedded "Now Playing" view and fullscreen/TV.
 // • On TV, the play/pause button gets initial D-pad focus, and D-pad Up from
 //   it jumps straight to the exit-fullscreen button via `nextFocusUp`.
+//
+// ── FIX: TV D-PAD GRID / FILTER-CHIP NAVIGATION ──────────────────────────────
+// Two related TV-only problems, fixed together:
+//   1. "Down doesn't move smoothly" — the channel grid FlatList was
+//      virtualizing rows off-screen, so Android's D-pad focus engine had
+//      nothing to jump to below the currently mounted rows.
+//   2. No visible focus indicator, and filter chips (language/genre) gave no
+//      focus feedback at all.
+// Visible focus (thicker/brighter border on TV) and a dedicated `FilterChip`
+// component with its own focus ring fixed #2. #1 was originally "fixed" by
+// forcing the ENTIRE grid to mount at once — see the PERFORMANCE FIX block
+// below for why that was reverted and what replaced it.
+//
+// ── FIX: TV PERFORMANCE WITH ~500 CHANNELS ──────────────────────────────────
+// The previous D-pad fix forced the whole TV grid (all ~500 cards) to mount
+// simultaneously, gave every card `elevation`/shadow at all times, and ran a
+// `findNodeHandle` native-tag lookup PER CARD (debounced but still ~500 calls
+// + a forced full-grid re-render every time new tags arrived). That's fine
+// at a few dozen items; at 500 it's what was causing the lag. Fixed by:
+//   • Reverting the TV FlatList to sane virtualization (only a healthy
+//     buffer of rows around the viewport stays mounted — see
+//     initialNumToRender/maxToRenderPerBatch/windowSize below —
+//     removeClippedSubviews re-enabled to free native views for offscreen
+//     cells). Android auto-scrolls a ScrollView to a focused descendant
+//     natively, and its geometric D-pad focus algorithm handles a clean grid
+//     like this on its own once enough rows are mounted — so the custom
+//     nextFocusUp/Down/Left/Right computation per card is no longer needed
+//     and has been removed, along with the cardTagsRef/registerCardNode
+//     registry that computed it. A single lightweight ref is kept ONLY for
+//     the first card, so Genre filter row → grid still hands off focus
+//     predictably via nextFocusDown.
+//   • `elevation`/shadow removed from the *default* card style — it's now
+//     only applied to the 1–2 cards that are active/focused at any moment,
+//     instead of every mounted card. Elevation forces Android to composite a
+//     software shadow layer per view; paying that cost for hundreds of
+//     concurrently mounted, mostly-identical cards was the single biggest
+//     cost here.
+//   • `onPress` is now passed down as the same stable `handleChannelSelect`
+//     reference (it already accepts `channel` as an argument) instead of a
+//     new inline arrow function created per card per render. This lets
+//     ChannelCard's `React.memo` actually skip re-rendering cards whose
+//     props haven't changed, instead of quietly re-rendering everything.
+//   • The focus-triggered scale-up `Animated.spring` was removed — it was
+//     firing on every single D-pad move across up to 500 items. Focus is
+//     still clearly visible via the border/glow styling alone.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, {
@@ -71,6 +116,7 @@ import React, {
   useCallback,
   useMemo,
   useEffect,
+  Ref,
 } from 'react';
 import {
   View,
@@ -126,17 +172,26 @@ const NOW_PLAYING_REC_COLS = isTV ? 4 : 3;
 const VIDEO_ASPECT_RATIO = 16 / 9;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ChannelCard  (unchanged)
+// ChannelCard
 // ─────────────────────────────────────────────────────────────────────────────
 interface CardProps {
   channel: Channel;
   isActive: boolean;
   cardWidth: number;
-  onPress: () => void;
+  // Stable function reference expected — pass `handleChannelSelect` directly
+  // from the parent rather than an inline arrow function, so React.memo below
+  // can actually skip re-rendering cards whose props haven't changed. This
+  // matters a lot at ~500 items; see PERFORMANCE FIX note at top of file.
+  onPress: (channel: Channel) => void;
+  preferredFocus?: boolean;
+  // Only ever passed for the first grid card (index 0), so the Genre filter
+  // row can hand focus off to a known target via nextFocusDown. NOT a
+  // per-card registry anymore — see PERFORMANCE FIX note at top of file.
+  innerRef?: Ref<any>;
 }
 
 const ChannelCard: React.FC<CardProps> = React.memo(
-  ({ channel, isActive, cardWidth, onPress }) => {
+  ({ channel, isActive, cardWidth, onPress, preferredFocus, innerRef }) => {
     const [isFocused, setIsFocused] = useState(false);
     const [isPressed, setIsPressed] = useState(false);
     const scaleAnim = useRef(new Animated.Value(1)).current;
@@ -161,14 +216,24 @@ const ChannelCard: React.FC<CardProps> = React.memo(
       }).start();
     }, [scaleAnim]);
 
+    // Plain state, no animation. Focus visibility comes from the border/glow
+    // styles below. An Animated.spring here used to fire on every single
+    // D-pad move across up to 500 cards — removed as part of the TV
+    // performance fix (see top-of-file note).
+    const handleFocus = useCallback(() => setIsFocused(true), []);
+    const handleBlur = useCallback(() => setIsFocused(false), []);
+
+    const handlePress = useCallback(() => onPress(channel), [onPress, channel]);
+
     const cardH = Math.round(cardWidth * 0.72);
     const hasLogo = !!channel.logo;
 
     return (
       <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
         <Pressable
+          ref={innerRef}
           focusable
-          hasTVPreferredFocus={false}
+          hasTVPreferredFocus={!!preferredFocus}
           style={[
             cardStyles.card,
             { width: cardWidth, height: cardH },
@@ -177,11 +242,11 @@ const ChannelCard: React.FC<CardProps> = React.memo(
             isFocused  && isActive  && cardStyles.cardFocusedActive,
             isPressed  && cardStyles.cardPressed,
           ]}
-          onPress={onPress}
+          onPress={handlePress}
           onPressIn={handlePressIn}
           onPressOut={handlePressOut}
-          onFocus={() => setIsFocused(true)}
-          onBlur={() => setIsFocused(false)}
+          onFocus={handleFocus}
+          onBlur={handleBlur}
           accessible
           accessibilityLabel={`Channel ${channel.number}: ${channel.name}`}
           accessibilityRole="button"
@@ -252,38 +317,44 @@ const cardStyles = StyleSheet.create({
     borderColor: 'rgba(30,41,59,0.9)',
     overflow: 'hidden',
     position: 'relative',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
-    elevation: 5,
+    // NOTE: no shadow/elevation here on purpose — see PERFORMANCE FIX note
+    // at the top of the file. With ~500 channels, applying elevation to
+    // every mounted card (even unfocused ones) was one of the most
+    // expensive things forcing Android to composite hundreds of software
+    // shadow layers. Only the active/focused states below opt back into
+    // it, which is at most 1–2 cards on screen at any time.
   },
   cardActive: {
     borderColor: '#3b82f6',
     borderWidth: 2,
     backgroundColor: 'rgba(29,78,216,0.15)',
     shadowColor: '#3b82f6',
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.55,
     shadowRadius: 12,
     elevation: 9,
   },
+  // TV: much thicker/brighter than phone so it reads clearly at viewing
+  // distance.
   cardFocused: {
     borderColor: '#818cf8',
-    borderWidth: 2,
+    borderWidth: isTV ? 4 : 2,
     backgroundColor: 'rgba(99,102,241,0.12)',
     shadowColor: '#818cf8',
-    shadowOpacity: 0.45,
-    shadowRadius: 10,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: isTV ? 0.75 : 0.45,
+    shadowRadius: isTV ? 16 : 10,
+    elevation: isTV ? 14 : 8,
   },
   cardFocusedActive: {
     borderColor: '#60a5fa',
-    borderWidth: 2.5,
+    borderWidth: isTV ? 4.5 : 2.5,
     backgroundColor: 'rgba(29,78,216,0.25)',
     shadowColor: '#60a5fa',
-    shadowOpacity: 0.6,
-    shadowRadius: 14,
-    elevation: 11,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: isTV ? 0.8 : 0.6,
+    shadowRadius: isTV ? 18 : 14,
+    elevation: isTV ? 16 : 11,
   },
   cardPressed: {
     borderColor: '#93c5fd',
@@ -296,7 +367,10 @@ const cardStyles = StyleSheet.create({
     borderColor: 'transparent',
   },
   glowRingActive:  { borderColor: 'rgba(59,130,246,0.35)' },
-  glowRingFocused: { borderColor: 'rgba(129,140,248,0.30)' },
+  glowRingFocused: {
+    borderColor: isTV ? 'rgba(129,140,248,0.55)' : 'rgba(129,140,248,0.30)',
+    borderWidth: isTV ? 3 : 2,
+  },
 
   logoBox: {
     width: '100%',
@@ -431,7 +505,7 @@ const sectionHeaderStyles = StyleSheet.create({
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FilterChips  (unchanged)
+// FilterChip / FilterChips
 // ─────────────────────────────────────────────────────────────────────────────
 const LANGUAGES = [
   'All','Hindi','English','Marathi','Bengali','Telugu',
@@ -442,15 +516,63 @@ const GENRES = [
   'Lifestyle','Music','Devotional','Business News','Comedy',
 ];
 
+interface FilterChipProps {
+  label: string;
+  active: boolean;
+  variant: 'lang' | 'genre';
+  onPress: () => void;
+  nextFocusDown?: number;
+}
+
+const FilterChip: React.FC<FilterChipProps> = React.memo(
+  ({ label, active, variant, onPress, nextFocusDown }) => {
+    const [isFocused, setIsFocused] = useState(false);
+    const focusColor = variant === 'lang' ? '#60a5fa' : '#a78bfa';
+
+    return (
+      <Pressable
+        focusable
+        nextFocusDown={nextFocusDown}
+        style={[
+          chipStyles.chip,
+          active && (variant === 'lang' ? chipStyles.chipLangActive : chipStyles.chipGenreActive),
+          isFocused && chipStyles.chipFocused,
+          isFocused && { borderColor: focusColor },
+        ]}
+        onPress={onPress}
+        onFocus={() => setIsFocused(true)}
+        onBlur={() => setIsFocused(false)}
+        accessible
+        accessibilityLabel={label}
+        accessibilityRole="button"
+        accessibilityState={{ selected: active }}
+      >
+        <Text
+          style={[
+            chipStyles.chipText,
+            active && chipStyles.chipTextActive,
+            isFocused && chipStyles.chipTextFocused,
+          ]}
+        >
+          {label}
+        </Text>
+      </Pressable>
+    );
+  },
+);
+
 interface FilterChipsProps {
   selectedLanguage: string;
   selectedGenre: string;
   onLanguageChange: (l: string) => void;
   onGenreChange: (g: string) => void;
+  // TV-only: native tag of the grid's first card, wired as nextFocusDown on
+  // the genre row (see FilterChip above).
+  gridFocusDownTarget?: number;
 }
 
 const FilterChips: React.FC<FilterChipsProps> = ({
-  selectedLanguage, selectedGenre, onLanguageChange, onGenreChange,
+  selectedLanguage, selectedGenre, onLanguageChange, onGenreChange, gridFocusDownTarget,
 }) => (
   <View style={chipStyles.wrapper}>
     <ScrollView
@@ -463,15 +585,13 @@ const FilterChips: React.FC<FilterChipsProps> = ({
         <Icon name="translate" size={10} color="#3b82f6" />
       </View>
       {LANGUAGES.map(lang => (
-        <Pressable
+        <FilterChip
           key={lang}
-          style={[chipStyles.chip, selectedLanguage === lang && chipStyles.chipLangActive]}
+          label={lang}
+          active={selectedLanguage === lang}
+          variant="lang"
           onPress={() => onLanguageChange(lang)}
-        >
-          <Text style={[chipStyles.chipText, selectedLanguage === lang && chipStyles.chipTextActive]}>
-            {lang}
-          </Text>
-        </Pressable>
+        />
       ))}
     </ScrollView>
 
@@ -485,15 +605,14 @@ const FilterChips: React.FC<FilterChipsProps> = ({
         <Icon name="filmstrip" size={10} color="#8b5cf6" />
       </View>
       {GENRES.map(genre => (
-        <Pressable
+        <FilterChip
           key={genre}
-          style={[chipStyles.chip, selectedGenre === genre && chipStyles.chipGenreActive]}
+          label={genre}
+          active={selectedGenre === genre}
+          variant="genre"
           onPress={() => onGenreChange(genre)}
-        >
-          <Text style={[chipStyles.chipText, selectedGenre === genre && chipStyles.chipTextActive]}>
-            {genre}
-          </Text>
-        </Pressable>
+          nextFocusDown={gridFocusDownTarget}
+        />
       ))}
     </ScrollView>
   </View>
@@ -521,6 +640,11 @@ const chipStyles = StyleSheet.create({
   chipGenreActive: { backgroundColor: 'rgba(109,40,217,0.25)', borderColor: '#8b5cf6' },
   chipText: { color: '#475569', fontSize: 11, fontWeight: '500' },
   chipTextActive: { color: '#fff', fontWeight: '700' },
+  chipFocused: {
+    borderWidth: isTV ? 2.5 : 2,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  chipTextFocused: { color: '#fff' },
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -531,11 +655,13 @@ const AdvancedUIScreen: React.FC<Props> = ({ navigation }) => {
     useChannelContext();
   const { isLandscape, width, height } = useOrientation();
 
-  const STATUS_BAR_HEIGHT = Platform.select({
-    android: StatusBar.currentHeight ?? 0,
-    ios: 20,
-    default: 0,
-  }) || 0;
+  const STATUS_BAR_HEIGHT = isTV
+    ? 0
+    : Platform.select({
+        android: StatusBar.currentHeight ?? 0,
+        ios: 20,
+        default: 0,
+      }) || 0;
 
   // ── Filters ───────────────────────────────────────────────────────────────
   const [selectedLanguage, setSelectedLanguage] = useState('All');
@@ -586,10 +712,31 @@ const AdvancedUIScreen: React.FC<Props> = ({ navigation }) => {
   const [isPaused, setIsPaused] = useState(false);
   const togglePause = useCallback(() => setIsPaused(p => !p), []);
 
-  // ── TV D-pad focus wiring ─────────────────────────────────────────────────
+  // ── TV D-pad focus wiring (fullscreen player chrome — small, fixed set of
+  // controls, unrelated to the channel grid below) ─────────────────────────
   const exitBtnRef = useRef<any>(null);
   const playPauseRef = useRef<any>(null);
   const [exitBtnTag, setExitBtnTag] = useState<number | null>(null);
+
+  // ── TV: first grid card's native tag, so the Genre filter row can hand
+  // focus off to a known target via nextFocusDown. This is intentionally
+  // the ONLY native-tag lookup for the grid — see PERFORMANCE FIX note at
+  // top of file for why a per-card registry was removed. ───────────────────
+  const firstCardRef = useRef<any>(null);
+  const [firstCardTag, setFirstCardTag] = useState<number | undefined>(undefined);
+
+  useEffect(() => {
+    if (!isTV) return;
+    // Re-measure whenever the list changes (e.g. filters reset which item
+    // ends up at index 0).
+    const t = setTimeout(() => {
+      if (firstCardRef.current) {
+        const tag = findNodeHandle(firstCardRef.current);
+        if (tag) setFirstCardTag(tag);
+      }
+    }, 50);
+    return () => clearTimeout(t);
+  }, [displayChannels.length, selectedLanguage, selectedGenre]);
 
   // True whenever the phone should show the immersive full-bleed player —
   // whether the user pressed the fullscreen button OR the device is
@@ -649,6 +796,10 @@ const AdvancedUIScreen: React.FC<Props> = ({ navigation }) => {
   }, [fullscreenActive, isTV]);
 
   // ── Channel selection ──────────────────────────────────────────────────────
+  // Stable reference (deps only on setCurrentChannel) — passed straight down
+  // to <ChannelCard onPress={handleChannelSelect} /> without wrapping, so
+  // React.memo can skip re-rendering cards whose other props haven't
+  // changed. See PERFORMANCE FIX note at top of file.
   const handleChannelSelect = useCallback((channel: Channel) => {
     setCurrentChannel(channel);
     setPlayingChannel(channel);
@@ -656,25 +807,35 @@ const AdvancedUIScreen: React.FC<Props> = ({ navigation }) => {
   }, [setCurrentChannel]);
 
   // ── Unified back handling ──────────────────────────────────────────────────
-  //   • In fullscreen           → exit fullscreen, return to Now Playing
-  //   • In Now Playing (portrait)→ return to grid (playingChannel kept so the
-  //                                grid still shows which card is active)
+  //   • In fullscreen (phone)     → exit fullscreen, return to Now Playing
+  //   • Playing on TV             → stop playback, return to the channel grid
+  //                                 (TV has no fullscreenActive state of its
+  //                                 own — it's always full-bleed while a
+  //                                 channel is set — so it needs its own
+  //                                 branch here)
+  //   • In Now Playing (portrait) → return to grid (playingChannel kept so
+  //                                 the grid still shows which card is active)
   const handleBack = useCallback(() => {
     if (fullscreenActive) {
       exitFullscreen();
       return;
     }
+    if (isTV && playingChannel) {
+      setPlayingChannel(null);
+      return;
+    }
     setIsNowPlayingPage(false);
-  }, [fullscreenActive, exitFullscreen]);
+  }, [fullscreenActive, exitFullscreen, playingChannel]);
 
   useEffect(() => {
-    if (!isNowPlayingPage && !fullscreenActive) return;
+    const tvPlaying = isTV && !!playingChannel;
+    if (!isNowPlayingPage && !fullscreenActive && !tvPlaying) return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       handleBack();
       return true;
     });
     return () => sub.remove();
-  }, [isNowPlayingPage, fullscreenActive, handleBack]);
+  }, [isNowPlayingPage, fullscreenActive, playingChannel, handleBack]);
 
   // ── Landscape/fullscreen controls auto-hide ───────────────────────────────
   // NOTE: this only gates the *auto-hiding* chrome (channel-name pill, TV top
@@ -733,13 +894,15 @@ const AdvancedUIScreen: React.FC<Props> = ({ navigation }) => {
 
   // ── Grid renderers ─────────────────────────────────────────────────────────
   const renderCard = useCallback(
-    ({ item }: { item: Channel }) => (
+    ({ item, index }: { item: Channel; index: number }) => (
       <View style={{ marginBottom: CARD_GAP }}>
         <ChannelCard
           channel={item}
           isActive={playingChannel?.id === item.id}
           cardWidth={cardWidth}
-          onPress={() => handleChannelSelect(item)}
+          onPress={handleChannelSelect}
+          preferredFocus={isTV && index === 0}
+          innerRef={isTV && index === 0 ? firstCardRef : undefined}
         />
       </View>
     ),
@@ -753,7 +916,7 @@ const AdvancedUIScreen: React.FC<Props> = ({ navigation }) => {
           channel={item}
           isActive={playingChannel?.id === item.id}
           cardWidth={recCardWidth}
-          onPress={() => handleChannelSelect(item)}
+          onPress={handleChannelSelect}
         />
       </View>
     ),
@@ -947,6 +1110,14 @@ const AdvancedUIScreen: React.FC<Props> = ({ navigation }) => {
                   )}
                   <Pressable
                     style={styles.lsIconBtn}
+                    onPress={() => setPlayingChannel(null)}
+                    accessibilityLabel="Back to channel grid"
+                    accessibilityRole="button"
+                  >
+                    <Icon name="view-grid-outline" size={22} color="#94a3b8" />
+                  </Pressable>
+                  <Pressable
+                    style={styles.lsIconBtn}
                     onPress={() => navigation.navigate('Selection')}
                   >
                     <Icon name="cog-outline" size={22} color="#94a3b8" />
@@ -962,10 +1133,90 @@ const AdvancedUIScreen: React.FC<Props> = ({ navigation }) => {
         </View>
       )}
 
+      {/* ── TV: channel grid ─────────────────────────────────────────────────
+          Shown only when nothing is playing. This reuses the exact same
+          ChannelCard / renderCard / getItemLayout as the phone grid — just
+          with `cols` resolving to LANDSCAPE_COLS (5) for TV instead of
+          PORTRAIT_COLS. Selecting a card sets `playingChannel`, which is all
+          that's needed to switch to full-bleed playback: `showPlayer` and
+          `playerContainerStyle` above already treat `isTV` as always
+          full-bleed, so there is no separate "TV fullscreen" step to wire up
+          — the grid simply disappears (this block stops rendering) and the
+          single persistent player takes over the whole screen.
+
+          Virtualization below is tuned for ~500 items: enough rows are kept
+          mounted around the viewport for D-pad focus to move smoothly, but
+          NOT the entire list — see PERFORMANCE FIX note at top of file for
+          why the earlier "render everything" approach was reverted. */}
       {isTV && !playingChannel && (
-        <View style={StyleSheet.absoluteFill}>
-          <NoChannelPlaceholder />
-        </View>
+        <>
+          <View style={[styles.header, { paddingTop: STATUS_BAR_HEIGHT + 16, paddingBottom: 16 }]}>
+            <View style={styles.headerLeft}>
+              <View style={styles.logoIcon}>
+                <Icon name="grid" size={20} color="#fff" />
+              </View>
+              <View>
+                <Text style={[styles.appName, { fontSize: 20 }]}>{APP_CONFIG.APP_NAME}</Text>
+                <Text style={styles.modeLabel}>Advanced Mode</Text>
+              </View>
+            </View>
+            <View style={styles.headerRight}>
+              <View style={styles.countBadge}>
+                <Text style={styles.countNum}>{displayChannels.length}</Text>
+                <Text style={styles.countLabel}>ch</Text>
+              </View>
+              <Pressable
+                style={styles.headerIconBtn}
+                onPress={() => navigation.navigate('Selection')}
+              >
+                <Icon name="cog-outline" size={20} color="#94a3b8" />
+              </Pressable>
+            </View>
+          </View>
+
+          <FilterChips
+            selectedLanguage={selectedLanguage}
+            selectedGenre={selectedGenre}
+            onLanguageChange={setSelectedLanguage}
+            onGenreChange={setSelectedGenre}
+            gridFocusDownTarget={firstCardTag}
+          />
+
+          <FlatList
+            data={displayChannels}
+            renderItem={renderCard}
+            keyExtractor={keyExtractor}
+            numColumns={cols}
+            columnWrapperStyle={{ gap: CARD_GAP }}
+            contentContainerStyle={{
+              paddingHorizontal: GRID_PADDING,
+              paddingTop: 16,
+              paddingBottom: 32,
+            }}
+            showsVerticalScrollIndicator={false}
+            getItemLayout={getItemLayout}
+            // Tuned for ~500 items: a healthy buffer of rows stays mounted
+            // around the viewport (enough for smooth D-pad focus movement +
+            // Android's native auto-scroll-to-focused-child), without
+            // forcing the whole list to render at once.
+            windowSize={10}
+            maxToRenderPerBatch={cols * 4}
+            initialNumToRender={cols * 8}
+            updateCellsBatchingPeriod={50}
+            removeClippedSubviews
+            ListEmptyComponent={
+              <View style={styles.emptyState}>
+                <Icon name="television-off" size={46} color="#1e293b" />
+                <Text style={styles.emptyTitle}>No channels found</Text>
+                <Text style={styles.emptySubtitle}>
+                  {selectedLanguage !== 'All' || selectedGenre !== 'All'
+                    ? 'Try changing Language or Genre filter'
+                    : 'Add channels via Settings'}
+                </Text>
+              </View>
+            }
+          />
+        </>
       )}
 
       {/* ── Portrait phone: Now Playing info + Up Next (below the player) ─── */}
@@ -1080,30 +1331,6 @@ const AdvancedUIScreen: React.FC<Props> = ({ navigation }) => {
     </View>
   );
 };
-
-// ─── NoChannelPlaceholder ─────────────────────────────────────────────────────
-const NoChannelPlaceholder: React.FC = () => (
-  <View style={placeholderStyles.container}>
-    <Icon name="television-off" size={isTV ? 100 : 56} color="#1e293b" />
-    <Text style={[placeholderStyles.text, isTV && placeholderStyles.tvText]}>
-      Select a Channel
-    </Text>
-    <Text style={placeholderStyles.sub}>Tap any channel card to start watching</Text>
-  </View>
-);
-
-const placeholderStyles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#030712',
-    gap: 10,
-  },
-  text:   { fontSize: 18, color: '#1f2937', fontWeight: '700' },
-  tvText: { fontSize: 26 },
-  sub:    { fontSize: 12, color: '#111827' },
-});
 
 // ─── Now Playing styles ───────────────────────────────────────────────────────
 const npStyles = StyleSheet.create({

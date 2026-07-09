@@ -79,10 +79,12 @@ src
 ├── types
 │   ├── channel.ts
 │   ├── navigation.ts
-│   └── player.ts
+│   ├── player.ts
+│   └── react-native-tv.d.ts
 └── utils
     ├── channelUtils.ts
     ├── formatters.ts
     ├── helpers.ts
+    ├── ImmersiveHelper.ts
     ├── OrientationHelper.ts
     └── validators.ts

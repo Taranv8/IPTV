@@ -693,7 +693,7 @@ const VideoPlayerInner: React.FC<Props> = ({ channel, fullscreen = false, paused
 
 // ─── Public export ────────────────────────────────────────────────────────────
 
-const VideoPlayer: React.FC<Props> = ({ channel, fullscreen, onFullscreenDismiss }) => {
+const VideoPlayer: React.FC<Props> = ({ channel, fullscreen, paused, onFullscreenDismiss }) => {
   const [boundaryKey, setBoundaryKey] = useState(0);
   return (
     <VideoErrorBoundary
@@ -704,6 +704,7 @@ const VideoPlayer: React.FC<Props> = ({ channel, fullscreen, onFullscreenDismiss
       <VideoPlayerInner
         channel={channel}
         fullscreen={fullscreen}
+        paused={paused}
         onFullscreenDismiss={onFullscreenDismiss}
       />
     </VideoErrorBoundary>

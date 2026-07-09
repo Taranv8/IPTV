@@ -11,12 +11,25 @@ import {
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../types/navigation';
 import { checkForOTAUpdate } from '../../services/OTAUpdateService';
-
+import { useChannelContext } from '../../context/ChannelContext';
 
 type SplashScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Splash'>;
 interface Props { navigation: SplashScreenNavigationProp; }
 
 const { width: SW, height: SH } = Dimensions.get('window');
+
+// ─── Low-end / TV performance mode ───────────────────────────────────────────
+// Budget Android TV boxes struggle with lots of simultaneously animated +
+// shadowed views. We trim element counts and shadow cost on TV without
+// changing the visual language of the screen.
+const IS_TV   = Platform.isTV === true;
+const LOW_END = IS_TV;
+
+const STAR_COUNT             = LOW_END ? 55 : 110;
+const TWINKLE_MODULO         = LOW_END ? 8  : 4;   // higher = fewer twinkling stars
+const PARTICLE_COUNT         = LOW_END ? 5  : 10;
+const SHOOTING_STARS         = LOW_END ? 2  : 3;
+const PARTICLE_SHADOW_SCALE  = LOW_END ? 0.6 : 1.4;
 
 const FF = {
   black:  Platform.OS === 'android' ? 'sans-serif-black'  : 'AvenirNext-Heavy',
@@ -26,38 +39,39 @@ const FF = {
 };
 
 // ─── Star field (static + twinkle) ───────────────────────────────────────────
-const STARS = Array.from({ length: 110 }, (_, i) => ({
+const STARS = Array.from({ length: STAR_COUNT }, (_, i) => ({
   x: Math.abs(Math.sin(i * 97.3 + 17) * SW),
   y: Math.abs(Math.cos(i * 251.9 + 43) * SH),
   r: 0.6 + (i % 5) * 0.5,
   o: 0.08 + (i % 6) * 0.08,
-  twinkle: i % 4 === 0,
+  twinkle: i % TWINKLE_MODULO === 0,
   color: ['#FFFFFF', '#B8D4FF', '#FFE8CC', '#D8CCFF', '#CCFFF0'][i % 5],
 }));
 
 // ─── Shooting Star ────────────────────────────────────────────────────────────
-const ShootingStar: React.FC<{ anim: Animated.Value; y: number; angle: number }> = ({ anim, y, angle }) => {
-  const x       = anim.interpolate({ inputRange: [0, 1], outputRange: [-220, SW + 220] });
-  const opacity = anim.interpolate({ inputRange: [0, 0.05, 0.75, 1], outputRange: [0, 1, 0.8, 0] });
-  return (
-    <Animated.View style={{
-      position: 'absolute', top: y, opacity,
-      transform: [{ translateX: x }, { rotate: `${angle}deg` }],
-    }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-        {[1, 0.65, 0.38, 0.2, 0.08].map((op, i) => (
-          <View key={i} style={{
-            width: i === 0 ? 10 : 22 - i * 4,
-            height: i === 0 ? 2.5 : 1.2,
-            borderRadius: 2,
-            backgroundColor: `rgba(200,230,255,${op})`,
-            marginLeft: i === 0 ? 0 : -1,
-          }} />
-        ))}
-      </View>
-    </Animated.View>
-  );
-};
+const ShootingStar: React.FC<{ anim: Animated.Value; y: number; angle: number }> =
+  React.memo(({ anim, y, angle }) => {
+    const x       = anim.interpolate({ inputRange: [0, 1], outputRange: [-220, SW + 220] });
+    const opacity = anim.interpolate({ inputRange: [0, 0.05, 0.75, 1], outputRange: [0, 1, 0.8, 0] });
+    return (
+      <Animated.View style={{
+        position: 'absolute', top: y, opacity,
+        transform: [{ translateX: x }, { rotate: `${angle}deg` }],
+      }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          {[1, 0.65, 0.38, 0.2, 0.08].map((op, i) => (
+            <View key={i} style={{
+              width: i === 0 ? 10 : 22 - i * 4,
+              height: i === 0 ? 2.5 : 1.2,
+              borderRadius: 2,
+              backgroundColor: `rgba(200,230,255,${op})`,
+              marginLeft: i === 0 ? 0 : -1,
+            }} />
+          ))}
+        </View>
+      </Animated.View>
+    );
+  });
 
 // ─── Broadcast Ring ───────────────────────────────────────────────────────────
 const BroadcastRing: React.FC<{
@@ -65,7 +79,7 @@ const BroadcastRing: React.FC<{
   opacity: Animated.Value;
   color: string;
   size: number;
-}> = ({ scale, opacity, color, size }) => (
+}> = React.memo(({ scale, opacity, color, size }) => (
   <Animated.View style={{
     position: 'absolute',
     width: size, height: size, borderRadius: size / 2,
@@ -73,12 +87,12 @@ const BroadcastRing: React.FC<{
     transform: [{ scale }], opacity,
     shadowColor: color, shadowRadius: 12, shadowOpacity: 0.6,
   }} />
-);
+));
 
 // ─── Floating Particle ────────────────────────────────────────────────────────
 const Particle: React.FC<{
   anim: Animated.Value; x: number; y: number; color: string; size: number;
-}> = ({ anim, x, y, color, size }) => {
+}> = React.memo(({ anim, x, y, color, size }) => {
   const ty  = anim.interpolate({ inputRange: [0, 1], outputRange: [0, -28] });
   const op  = anim.interpolate({ inputRange: [0, 0.3, 0.7, 1], outputRange: [0, 0.7, 0.7, 0] });
   const sc  = anim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0.4, 1, 0.6] });
@@ -88,10 +102,10 @@ const Particle: React.FC<{
       width: size, height: size, borderRadius: size / 2,
       backgroundColor: color,
       opacity: op, transform: [{ translateY: ty }, { scale: sc }],
-      shadowColor: color, shadowRadius: size * 1.4, shadowOpacity: 1,
+      shadowColor: color, shadowRadius: size * PARTICLE_SHADOW_SCALE, shadowOpacity: 1,
     }} />
   );
-};
+});
 
 // ─── Sleek Rocket (nose RIGHT, flame LEFT, drifts) ───────────────────────────
 const SleekRocket: React.FC<{
@@ -100,7 +114,7 @@ const SleekRocket: React.FC<{
   tilt: Animated.Value;
   flameScale: Animated.Value;
   flameOpacity: Animated.Value;
-}> = ({ posX, posY, tilt, flameScale, flameOpacity }) => {
+}> = React.memo(({ posX, posY, tilt, flameScale, flameOpacity }) => {
 
   const rotDeg = tilt.interpolate({
     inputRange: [-1, 0, 1],
@@ -123,15 +137,10 @@ const SleekRocket: React.FC<{
 
         {/* ── EXHAUST PLUME ── */}
         <Animated.View style={[styles.exhaustWrap, { opacity: flameOpacity }]}>
-          {/* Outer glow blob */}
           <Animated.View style={[styles.exhaustGlow, { opacity: flameGlow, transform: [{ scale: flameScale }] }]} />
-
-          {/* Main exhaust streams */}
           <Animated.View style={[styles.exhaustStream, styles.exhaustTop, { width: fLen(38, 64) }]} />
           <Animated.View style={[styles.exhaustStream, styles.exhaustMid, { width: fLen(52, 82) }]} />
           <Animated.View style={[styles.exhaustStream, styles.exhaustBot, { width: fLen(34, 58) }]} />
-
-          {/* Hot core */}
           <Animated.View style={[styles.exhaustCore, { width: fLen(18, 32) }]} />
           <Animated.View style={[styles.exhaustInner, { width: fLen(8, 18) }]} />
         </Animated.View>
@@ -143,19 +152,15 @@ const SleekRocket: React.FC<{
 
         {/* ── BODY ── */}
         <View style={styles.rocketBody}>
-          {/* Metallic sheen */}
           <View style={styles.bodySheenTop} />
           <View style={styles.bodySheenBot} />
-          {/* Accent stripe */}
           <View style={styles.bodyStripe} />
-          {/* Window */}
           <View style={styles.window}>
             <View style={styles.windowGlass}>
               <View style={styles.windowShine1} />
               <View style={styles.windowShine2} />
             </View>
           </View>
-          {/* Fins */}
           <View style={styles.finTop} />
           <View style={styles.finBot} />
         </View>
@@ -169,7 +174,7 @@ const SleekRocket: React.FC<{
       </View>
     </Animated.View>
   );
-};
+});
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 const SplashScreen: React.FC<Props> = ({ navigation }) => {
@@ -203,7 +208,7 @@ const SplashScreen: React.FC<Props> = ({ navigation }) => {
   const shoot3 = useRef(new Animated.Value(0)).current;
 
   // Particles
-  const particleAnims = useRef(Array.from({ length: 10 }, () => new Animated.Value(0))).current;
+  const particleAnims = useRef(Array.from({ length: PARTICLE_COUNT }, () => new Animated.Value(0))).current;
 
   // Rocket
   const rocketX      = useRef(new Animated.Value(-SW * 0.28)).current;
@@ -211,6 +216,31 @@ const SplashScreen: React.FC<Props> = ({ navigation }) => {
   const rocketTilt   = useRef(new Animated.Value(0)).current;
   const flameScale   = useRef(new Animated.Value(1)).current;
   const flameOpacity = useRef(new Animated.Value(0.9)).current;
+
+  // ── Channel loading gate ──
+  const { isLoading: channelsLoading } = useChannelContext();
+  const navigatedRef = useRef(false);
+  const minTimeRef    = useRef(false);
+  const otaRef        = useRef<{ updateAvailable: boolean } | null>(null);
+
+  const doNavigate = () => {
+    if (navigatedRef.current) return;
+    navigatedRef.current = true;
+
+    if (otaRef.current?.updateAvailable) {
+      navigation.reset({ index: 0, routes: [{ name: 'OTAUpdate' }] });
+    } else {
+      navigation.reset({ index: 0, routes: [{ name: 'Selection' }] });
+    }
+  };
+
+  const attemptNavigate = () => {
+    if (navigatedRef.current) return;
+    if (!minTimeRef.current) return;
+    if (!otaRef.current) return;
+    if (channelsLoading) return;
+    doNavigate();
+  };
 
   useEffect(() => {
     // ── Logo entrance ──
@@ -304,7 +334,7 @@ const SplashScreen: React.FC<Props> = ({ navigation }) => {
     };
     shoot(shoot1, 600);
     shoot(shoot2, 2000);
-    shoot(shoot3, 3500);
+    if (SHOOTING_STARS >= 3) shoot(shoot3, 3500);
 
     // ── Particles ──
     particleAnims.forEach((v, i) => {
@@ -379,31 +409,41 @@ const SplashScreen: React.FC<Props> = ({ navigation }) => {
     setTimeout(drift, 800);
 
     // ── Navigate ──
-   // ─── REPLACE with this block ─────────────────────────────────────────
-let cancelled = false;
+    let cancelled = false;
+    const MIN_SPLASH_MS = 3800;
+    const MAX_WAIT_MS   = 15000; // safety cap so a dead API can't strand the user here
 
-// Run OTA check in parallel with the splash animations.
-// Both must finish before we navigate — splash always shows at least 3800 ms.
-Promise.all([
-  new Promise<void>(resolve => setTimeout(resolve, 3800)),
-  checkForOTAUpdate(),
-]).then(([, otaResult]) => {
-  if (cancelled) return;
+    const minTimer = setTimeout(() => {
+      minTimeRef.current = true;
+      attemptNavigate();
+    }, MIN_SPLASH_MS);
 
-  if (otaResult.updateAvailable) {
-    // storePendingOTA() was already called inside checkForOTAUpdate()
-    navigation.reset({ index: 0, routes: [{ name: 'OTAUpdate' }] });
-  } else {
-    navigation.reset({ index: 0, routes: [{ name: 'Selection' }] });
-  }
-});
+    const maxTimer = setTimeout(() => {
+      if (!navigatedRef.current) {
+        console.warn('[Splash] Channel load exceeded max wait — navigating anyway');
+        doNavigate();
+      }
+    }, MAX_WAIT_MS);
 
-return () => { cancelled = true; };
-// ─────────────────────────────────────────────────────────────────────
+    checkForOTAUpdate().then(result => {
+      if (cancelled) return;
+      otaRef.current = result;
+      attemptNavigate();
+    });
+
+    return () => {
+      cancelled = true;
+      clearTimeout(minTimer);
+      clearTimeout(maxTimer);
+    };
   }, []);
 
+  useEffect(() => {
+    attemptNavigate();
+  }, [channelsLoading]);
+
   // ── Particle positions ──
-  const PARTICLES = [
+  const ALL_PARTICLES = [
     { x: SW * 0.06, y: SH * 0.13, color: '#00D4FF', size: 5 },
     { x: SW * 0.88, y: SH * 0.10, color: '#FF3CAC', size: 4 },
     { x: SW * 0.04, y: SH * 0.44, color: '#FFD700', size: 6 },
@@ -415,6 +455,7 @@ return () => { cancelled = true; };
     { x: SW * 0.72, y: SH * 0.20, color: '#00FFA3', size: 3 },
     { x: SW * 0.25, y: SH * 0.88, color: '#A78BFA', size: 5 },
   ];
+  const PARTICLES = ALL_PARTICLES.slice(0, PARTICLE_COUNT);
 
   const logoGlowOp = glowPulse.interpolate({
     inputRange: [1, 1.22], outputRange: [0.5, 1],
@@ -422,23 +463,28 @@ return () => { cancelled = true; };
 
   return (
     <View style={styles.root}>
-      {/* Background layers */}
-      <View style={styles.bgBase} />
-      <View style={styles.bgGrad1} />
-      <View style={styles.bgGrad2} />
-      <View style={styles.bgGrad3} />
-      <View style={styles.bgGrad4} />
+      {/* Static background + stars — rasterized once, not re-composited every frame */}
+      <View
+        style={StyleSheet.absoluteFill}
+        renderToHardwareTextureAndroid
+        shouldRasterizeIOS
+      >
+        <View style={styles.bgBase} />
+        <View style={styles.bgGrad1} />
+        <View style={styles.bgGrad2} />
+        <View style={styles.bgGrad3} />
+        <View style={styles.bgGrad4} />
 
-      {/* Static stars */}
-{STARS.filter(s => !s.twinkle).map((s, i) => (
-  <View key={`s${i}`} style={[styles.star, {
-    left: s.x, top: s.y,
-    width: s.r, height: s.r,
-    borderRadius: s.r / 2,
-    opacity: s.o,
-    backgroundColor: s.color,
-  }]} />
-))}
+        {STARS.filter(s => !s.twinkle).map((s, i) => (
+          <View key={`s${i}`} style={[styles.star, {
+            left: s.x, top: s.y,
+            width: s.r, height: s.r,
+            borderRadius: s.r / 2,
+            opacity: s.o,
+            backgroundColor: s.color,
+          }]} />
+        ))}
+      </View>
 
       {/* Twinkle stars */}
       {twinkleStars.map((s, i) => (
@@ -460,7 +506,7 @@ return () => { cancelled = true; };
       {/* Shooting stars */}
       <ShootingStar anim={shoot1} y={SH * 0.06} angle={-8}  />
       <ShootingStar anim={shoot2} y={SH * 0.18} angle={-11} />
-      <ShootingStar anim={shoot3} y={SH * 0.30} angle={-7}  />
+      {SHOOTING_STARS >= 3 && <ShootingStar anim={shoot3} y={SH * 0.30} angle={-7} />}
 
       {/* Center content */}
       <View style={styles.center}>
@@ -551,7 +597,6 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
   },
 
-  // Backgrounds
   bgBase:  { position: 'absolute', width: SW, height: SH, backgroundColor: '#03030E' },
   bgGrad1: {
     position: 'absolute', width: SW * 1.6, height: SW * 1.6,
@@ -574,10 +619,8 @@ const styles = StyleSheet.create({
 
   star: { position: 'absolute' },
 
-  // Center
   center: { alignItems: 'center', justifyContent: 'center' },
 
-  // Logo mark
   logoWrap: { alignItems: 'center', justifyContent: 'center', marginBottom: 28 },
   logoGlowOuter: {
     position: 'absolute', width: 130, height: 130, borderRadius: 65,
@@ -614,7 +657,6 @@ const styles = StyleSheet.create({
     shadowColor: '#FF3CAC', shadowRadius: 5, shadowOpacity: 1,
   },
 
-  // Name
   nameBlock: { alignItems: 'center', overflow: 'hidden' },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   nameMain: {
@@ -639,7 +681,6 @@ const styles = StyleSheet.create({
     transform: [{ skewX: '-18deg' }],
   },
 
-  // Tagline
   taglineRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 12 },
   taglineLine: { width: 28, height: 0.8, backgroundColor: 'rgba(0,212,255,0.4)' },
   tagline: {
@@ -647,7 +688,6 @@ const styles = StyleSheet.create({
     color: 'rgba(180,210,230,0.55)', letterSpacing: 2.8,
   },
 
-  // Loader
   loaderWrap: { marginTop: 28, alignItems: 'center' },
   loaderBg: {
     width: 220, height: 4, borderRadius: 2,
@@ -673,7 +713,6 @@ const styles = StyleSheet.create({
     fontSize: 9.5, color: 'rgba(0,212,255,0.45)', letterSpacing: 2.4,
   },
 
-  // ─── Rocket ───────────────────────────────────────────────────────────────
   rocketRow: {
     position: 'absolute', top: SH * 0.71, left: 0,
     width: SW, height: 110, overflow: 'visible',
@@ -684,7 +723,6 @@ const styles = StyleSheet.create({
   },
   rocketAssembly: { flexDirection: 'row', alignItems: 'center' },
 
-  // Exhaust
   exhaustWrap: {
     width: 78, height: 40, justifyContent: 'center',
     overflow: 'visible', marginRight: -10, position: 'relative',
@@ -723,7 +761,6 @@ const styles = StyleSheet.create({
     shadowColor: '#FFFFFF', shadowRadius: 5, shadowOpacity: 1,
   },
 
-  // Engine bell
   engineBell: {
     width: 14, height: 26, borderRadius: 5,
     backgroundColor: '#2A3560',
@@ -737,7 +774,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#364070',
   },
 
-  // Body
   rocketBody: {
     width: 82, height: 40,
     backgroundColor: '#E8ECFA',
@@ -799,7 +835,6 @@ const styles = StyleSheet.create({
     borderLeftColor: 'transparent', borderRightColor: 'transparent',
   },
 
-  // Nose cone
   noseConeWrap: {
     width: 34, height: 40,
     justifyContent: 'center', alignItems: 'flex-start',
