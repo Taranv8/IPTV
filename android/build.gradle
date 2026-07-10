@@ -6,7 +6,8 @@ buildscript {
         targetSdkVersion = 36
         ndkVersion = "27.1.12297006"
         kotlinVersion = "2.1.20"
-         media3Version = "1.4.1" 
+         media3Version = "1.4.1"
+          useExoplayerIMA = true 
     }
     repositories {
         google()

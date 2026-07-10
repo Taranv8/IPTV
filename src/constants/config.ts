@@ -11,6 +11,7 @@ export const APP_CONFIG = {
   UI_SELECTION_COUNTDOWN: 5,
   CONTROLS_HIDE_DELAY: 5000,
   CHANNELS_PER_PAGE: 10,
+  VAST_AD_URL:'https://bid.onclckstr.com/vast?spot_id=6122362',
   CHANNEL_REFRESH_INTERVAL: 24 * 60 * 60 * 1000,
   ENABLE_CACHE: true,
   MAX_CACHE_AGE: 7 * 24 * 60 * 60 * 1000,

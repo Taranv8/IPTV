@@ -22,7 +22,8 @@ export interface StreamUrl {
 export interface Channel {
   id:        string;
   name:      string;
-
+ isAd?: boolean;          // NEW
+  adDuration?: number;
   /**
    * Active stream URL — resolved from `streamUrls[0]` (or the legacy flat
    * `streamUrl` field on old documents). VideoPlayer uses this directly.
