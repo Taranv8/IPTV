@@ -1,46 +1,60 @@
 // src/components/player/VideoPlayer.tsx
 //
-// HARD-RESTART ON MID-STREAM 22004 + IN-STREAM ADS VIA GOOGLE IMA
+// HARD-RESTART ON MID-STREAM 22004 + CHANNEL-SWITCH-ONLY ADS VIA GOOGLE IMA
 //
-// ─── What changed in this revision ───────────────────────────────────────────
+// ─── Ad architecture ──────────────────────────────────────────────────────────
 //
-// Ads no longer go through hand-rolled VAST XML parsing + manual source
-// swapping. Instead this hands the VAST tag URL straight to react-native-video,
-// which uses ExoPlayer's IMA extension on Android and the native IMA SDK on
-// iOS to fetch/parse/schedule/track the ad itself.
+// Ads go through react-native-video's built-in Google IMA integration
+// (ExoPlayer's IMA extension on Android, the native IMA SDK on iOS) — no
+// hand-rolled VAST parsing. We hand it a VAST tag URL and it fetches,
+// parses, schedules, and tracks the ad itself.
 //
-// PROP SHAPE: confirmed against this project's installed react-native-video
-// types (not guessed) — ads go under the nested `source.ad` field, and
-// AdConfig is a discriminated union that requires `type: 'csai'` alongside
-// `adTagUrl` for client-side ad insertion:
+// PROP SHAPE: ads go under the nested `source.ad` field; AdConfig is a
+// discriminated union requiring `type: 'csai'` (client-side ad insertion)
+// alongside `adTagUrl`:
 //     source={{ uri, type, headers, ad: { type: 'csai', adTagUrl } }}
-// If you upgrade react-native-video and this starts failing to typecheck
-// again, trust the compiler error over this comment — the shape has moved
-// around across versions historically.
+// If you upgrade react-native-video and this stops typechecking, trust the
+// compiler error over this comment — the shape has moved around across
+// versions historically.
 //
 // You must also enable IMA natively before any of this does anything:
 //   iOS Podfile:            $RNVideoUseGoogleIMA=true
 //   Android build.gradle:   useExoplayerIMA = true
 //
-// ─── How ad breaks are triggered now ─────────────────────────────────────────
+// ─── When ads are allowed to play (channel-switch only, never mid-stream) ────
 //
-//   1. PRE-ROLL — on every channel change, if AdService.shouldPlayOnChannelChange()
-//      says it's time, we set `adTagUrl` state BEFORE the new channel's
-//      <Video> mounts. IMA sees the ad tag attached to the same element as
-//      the content source and plays the ad first, then auto-resumes content.
+// There is no periodic mid-roll timer. An ad can ONLY be triggered by a
+// genuine channel change, and even then not immediately:
 //
-//   2. MID-ROLL — a timer armed after each successful content first-frame,
-//      same as before. When it fires and AdService.canPlayMidRoll() says
-//      yes, we set `adTagUrl` AND bump `streamRestartKey` to force a fresh
-//      <Video> mount — this is required because there is no imperative
-//      "request an ad now" API; IMA only requests the tag on mount/prop
-//      attach. This costs a brief reconnect, same as your existing
-//      hard-restart already does for mid-stream 22004 errors.
+//   1. Channel change is always instant and ad-free at the moment of the
+//      switch — we never attach an ad tag to a channel's first mount. This
+//      is what makes flipping through channels quickly feel completely
+//      normal, the way changing channels on cable does.
 //
-// Ad lifecycle (start/end/error) is now driven entirely by onReceiveAdEvent,
-// not by our own state machine — see handleAdEvent below. The live-TV
-// failover machinery (hard-restart, source cycling, stall watchdog, health
-// reporting) is untouched for `mode === 'content'`.
+//   2. Once that channel's content has been playing stably for
+//      AdService.channelSettleDelayMs (remote-configurable — see
+//      remoteConfigService.ts / AdService.ts), we check
+//      AdService.shouldPlayOnChannelChange(). Only a viewer who actually
+//      stopped and watched something ever becomes eligible for an ad —
+//      someone surfing past 5 channels in 3 seconds never does.
+//
+//   3. If eligible, we attach adTagUrl AND bump streamRestartKey to force a
+//      fresh <Video> mount — there is no imperative "request an ad now"
+//      API, IMA only requests the tag on mount/prop attach. This costs a
+//      brief reconnect, same as the existing hard-restart path already
+//      costs for mid-stream 22004 recovery.
+//
+// `pendingSettleCheckRef` is the guard that keeps this to "channel switch
+// only": it's armed exclusively from the channel-change effect, and
+// consumed (cleared) the first time content becomes ready afterwards. A
+// mid-stream hard-restart (22004 recovery) or source-failover reconnect
+// never sets this flag, so neither can ever accidentally trigger a bonus
+// ad — only a real channel change can.
+//
+// Ad lifecycle (start/end/error) is driven entirely by onReceiveAdEvent —
+// see handleAdEvent below. The live-TV failover machinery (hard-restart,
+// source cycling, stall watchdog, health reporting) is untouched for
+// `mode === 'content'`.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
@@ -65,7 +79,7 @@ import {
 } from '../../services/stream/StreamResolver';
 import { StreamHealthService, HealthMap } from '../../services/stream/StreamHealthService';
 import { VideoErrorBoundary } from './VideoErrorBoundary';
-import AdService, { VAST_AD_TAG_URL } from '../../services/ads/AdService';
+import AdService from '../../services/ads/AdService';
 
 // ─── Timing constants ─────────────────────────────────────────────────────────
 
@@ -222,8 +236,8 @@ const VideoPlayerInner: React.FC<Props> = ({ channel, fullscreen = false, paused
   const [mode,        setMode]        = useState<'content' | 'ad'>('content');
   const [adRemaining, setAdRemaining] = useState(0); // best-effort countdown; Android AD_PROGRESS only
 
-  // Set right before a fresh <Video> mount when a pre-roll or mid-roll
-  // should play. Cleared once IMA signals the ad break ended.
+  // Set right before a fresh <Video> mount when the settle check (below)
+  // decides an ad should play. Cleared once IMA signals the ad break ended.
   const [adTagUrl, setAdTagUrl] = useState<string | undefined>(undefined);
 
   const videoRef      = useRef<any>(null);
@@ -245,7 +259,13 @@ const VideoPlayerInner: React.FC<Props> = ({ channel, fullscreen = false, paused
   const healthRef     = useRef<HealthMap>({});
   const sortedUrlsRef = useRef<NonNullable<Channel['streamUrls']>>([]);
 
-  const midRollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Armed once, from the channel-change effect only, and consumed the first
+  // time content becomes ready afterwards. This is what keeps ads tied
+  // strictly to genuine channel switches — a hard-restart or source-cycling
+  // reconnect never sets it, so neither can ever trigger a bonus ad.
+  const pendingSettleCheckRef = useRef(false);
+  const settleTimerRef        = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Bumped on every loadChannel() call; lets a stale in-flight async op
   // recognize it's been superseded and bail out instead of clobbering newer
   // state.
@@ -296,8 +316,8 @@ const VideoPlayerInner: React.FC<Props> = ({ channel, fullscreen = false, paused
     clearRetryTimer();
   }, [clearStallTimer, clearRetryTimer]);
 
-  const clearMidRollTimer = useCallback(() => {
-    if (midRollTimerRef.current) { clearTimeout(midRollTimerRef.current); midRollTimerRef.current = null; }
+  const clearSettleTimer = useCallback(() => {
+    if (settleTimerRef.current) { clearTimeout(settleTimerRef.current); settleTimerRef.current = null; }
   }, []);
 
   // ── Live-edge seek ────────────────────────────────────────────────────────
@@ -366,6 +386,10 @@ const VideoPlayerInner: React.FC<Props> = ({ channel, fullscreen = false, paused
   }, []);
 
   // ── Hard restart — same source URL, new <Video> instance (content only) ──
+  //
+  // NOTE: deliberately does not touch pendingSettleCheckRef/adTagUrl. A
+  // 22004 recovery is not a channel switch and must never be able to
+  // trigger an ad.
 
   const hardRestartStream = useCallback(() => {
     if (cancelledRef.current) return;
@@ -444,7 +468,7 @@ const VideoPlayerInner: React.FC<Props> = ({ channel, fullscreen = false, paused
   useEffect(() => { scheduleRetryRef.current = scheduleRetry; }, [scheduleRetry]);
 
   // ── Content load — extracted so it can run both on channel change AND ────
-  // ── right after streamRestartKey bumps for a mid-roll ────────────────────
+  // ── right after streamRestartKey bumps for the settle-triggered ad ───────
 
   const loadChannel = useCallback(async () => {
     const myGen = ++loadGenRef.current;
@@ -510,27 +534,28 @@ const VideoPlayerInner: React.FC<Props> = ({ channel, fullscreen = false, paused
 
   useEffect(() => { loadChannelRef.current = loadChannel; }, [loadChannel]);
 
-  // ── Ad-break scheduling ───────────────────────────────────────────────────
+  // ── Post-switch ad check (the only place an ad can ever be triggered) ────
   //
-  // Armed after every successful content first-frame; fires a mid-roll ad
-  // break once the configured interval elapses, as long as we're still
-  // playing content, the app is foregrounded, and AdService says it's time.
-  // Since there's no imperative "request ad now" API, triggering the ad
-  // means bumping streamRestartKey to force a fresh <Video> mount with
-  // adTagUrl attached.
-  const scheduleMidRoll = useCallback(() => {
-    clearMidRollTimer();
-    midRollTimerRef.current = setTimeout(function tick() {
-      if (cancelledRef.current) return;
-      if (modeRef.current === 'content' && appActiveRef.current && AdService.canPlayMidRoll()) {
-        console.log('[VideoPlayer] 🅱️ Triggering mid-roll ad');
-        setAdTagUrl(VAST_AD_TAG_URL);
-        setStreamRestartKey(k => k + 1); // forces IMA to issue a fresh ad request
-      } else {
-        midRollTimerRef.current = setTimeout(tick, 30_000);
-      }
-    }, AdService.midRollIntervalMs());
-  }, [clearMidRollTimer]);
+  // Fires once, AdService.channelSettleDelayMs after content from a genuine
+  // channel change first becomes ready (see the pendingSettleCheckRef gate
+  // in handleReadyForDisplay). If the viewer is still watching this channel
+  // at that point — not mid-flip to another one — and AdService says an ad
+  // is due, we attach the tag and force a fresh mount to insert it.
+  const scheduleSettleAdCheck = useCallback(() => {
+    clearSettleTimer();
+    const delay = AdService.channelSettleDelayMs;
+    settleTimerRef.current = setTimeout(() => {
+      if (cancelledRef.current || modeRef.current !== 'content') return;
+      if (!appActiveRef.current) return;
+      if (!hasLoadedOnce.current) return; // still buffering/failing over — don't pile an ad on top
+
+      if (!AdService.shouldPlayOnChannelChange()) return;
+
+      console.log('[VideoPlayer] 🅰️ Settled on channel — inserting ad');
+      setAdTagUrl(AdService.vastTagUrl);
+      setStreamRestartKey(k => k + 1); // forces IMA to issue a fresh ad request
+    }, delay);
+  }, [clearSettleTimer]);
 
   // ── IMA ad events ──────────────────────────────────────────────────────────
 
@@ -567,10 +592,12 @@ const VideoPlayerInner: React.FC<Props> = ({ channel, fullscreen = false, paused
       setAdTagUrl(undefined);
       setAdRemaining(0);
       setMode('content');
-      scheduleMidRoll();
+      // Deliberately NOT re-arming the settle check here — ads are one-shot
+      // per channel switch. The next opportunity only comes from the next
+      // genuine channel change.
       return;
     }
-  }, [scheduleMidRoll]);
+  }, []);
 
   // ── Stall watchdog (content only — IMA manages its own ad timeouts) ──────
 
@@ -599,21 +626,18 @@ const VideoPlayerInner: React.FC<Props> = ({ channel, fullscreen = false, paused
 
     cancelledRef.current = true;
     clearAllTimers();
-    clearMidRollTimer();
+    clearSettleTimer();
 
     cancelledRef.current = false;
     setContainerReady(false);
 
-    // Decide up front whether this channel load should carry a pre-roll.
-    // If so, IMA plays it before content starts since both are attached to
-    // the same <Video> element. Logged unconditionally (not just on true) —
-    // a silent "false" here is exactly what hid the lastAdAt cooldown bug.
-    const wantsPreroll = AdService.shouldPlayOnChannelChange();
-    console.log(
-      `[VideoPlayer] 🅰️ Pre-roll decision for "${channel.name}": ` +
-      (wantsPreroll ? 'PLAY AD ✅' : 'skip ❌ (see [AdService] logs above for why)'),
-    );
-    setAdTagUrl(wantsPreroll ? VAST_AD_TAG_URL : undefined);
+    // Channel changes are always instant and ad-free — no ad tag is ever
+    // attached to a fresh channel's first mount. Whether an ad plays is
+    // decided later, only once the viewer has settled (see
+    // scheduleSettleAdCheck, armed below via pendingSettleCheckRef once
+    // content is actually ready).
+    setAdTagUrl(undefined);
+    pendingSettleCheckRef.current = true;
 
     loadChannelRef.current();
 
@@ -621,7 +645,7 @@ const VideoPlayerInner: React.FC<Props> = ({ channel, fullscreen = false, paused
       cancelledRef.current  = true;
       hasLoadedOnce.current = false;
       clearAllTimers();
-      clearMidRollTimer();
+      clearSettleTimer();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [channel.id]);
@@ -652,9 +676,15 @@ const VideoPlayerInner: React.FC<Props> = ({ channel, fullscreen = false, paused
 
     if (url) StreamHealthService.report(ch.id, url, 'success');
 
-    // Content is stable — arm the next mid-roll.
-    scheduleMidRoll();
-  }, [clearAllTimers, scheduleMidRoll]);
+    // Only a genuine channel change arms the settle check — hard-restart
+    // and source-cycling reconnects also land here but never set
+    // pendingSettleCheckRef, so they're a no-op for ads.
+    if (pendingSettleCheckRef.current) {
+      pendingSettleCheckRef.current = false;
+      console.log(`[VideoPlayer] 🅰️ Arming settle check (${AdService.channelSettleDelayMs}ms)`);
+      scheduleSettleAdCheck();
+    }
+  }, [clearAllTimers, scheduleSettleAdCheck]);
 
   const handleBuffer = useCallback(({ isBuffering }: { isBuffering: boolean }) => {
     if (cancelledRef.current || modeRef.current === 'ad') return; // IMA manages ad buffering itself
@@ -793,7 +823,7 @@ const VideoPlayerInner: React.FC<Props> = ({ channel, fullscreen = false, paused
       console.log('[VideoPlayer] 🎬 <Video> source carries ad config:', JSON.stringify((videoSource as any).ad));
     } else if (adTagUrl) {
       // adTagUrl state is set but didn't make it into videoSource — a real
-      // wiring bug, distinct from the AdService cooldown bug.
+      // wiring bug, distinct from the AdService cooldown/eligibility logic.
       console.warn('[VideoPlayer] ⚠️ adTagUrl is set but videoSource has no `ad` field — check the videoSource memo');
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps

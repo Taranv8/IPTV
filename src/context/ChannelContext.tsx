@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useMemo, useCallback } from 'react';
 import { Channel, ChannelFilter } from '../types/channel';
-import { useChannels } from '../hooks/useChannels';
+import { useChannels, SyncProgress } from '../hooks/useChannels';
 import { getGroupsFromChannels } from '../constants/channels';
 import { APP_CONFIG, STORAGE_KEYS } from '../constants/config';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -13,6 +13,8 @@ interface ChannelContextType {
   groups: string[];
   isLoading: boolean;
   error: string | null;
+  /** Non-null while a fresh channel sync is streaming in over WebSocket. */
+  syncProgress: SyncProgress | null;
   setCurrentChannel: (channel: Channel) => void;
   setFilter: (filter: ChannelFilter) => void;
   toggleFavorite: (channelId: string) => void;
@@ -22,7 +24,7 @@ interface ChannelContextType {
 const ChannelContext = createContext<ChannelContextType | undefined>(undefined);
 
 export const ChannelProvider = ({ children }: { children: ReactNode }) => {
-  const { channels, isLoading, error, refetch } = useChannels();
+  const { channels, isLoading, error, syncProgress, refetch } = useChannels();
   const [currentChannel, setCurrentChannel] = useState<Channel | null>(null);
   const [favorites, setFavorites] = useState<string[]>([]);
   const [filter, setFilter] = useState<ChannelFilter>({
@@ -90,11 +92,12 @@ const toggleFavorite = useCallback(async (channelId: string) => {
   groups,
   isLoading,
   error,
+  syncProgress,
   setCurrentChannel,
   setFilter,
   toggleFavorite,
   refreshChannels: refetch,
-}), [channelsWithFavorites, filteredChannels, currentChannel, filter, groups, isLoading, error, toggleFavorite, refetch]);
+}), [channelsWithFavorites, filteredChannels, currentChannel, filter, groups, isLoading, error, syncProgress, toggleFavorite, refetch]);
 
 return (
   <ChannelContext.Provider value={contextValue}>

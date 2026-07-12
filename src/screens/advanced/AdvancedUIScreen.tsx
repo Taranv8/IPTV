@@ -512,7 +512,7 @@ const LANGUAGES = [
   'Tamil','Kannada','Gujarati','Odia','Malayalam','Punjabi',
 ];
 const GENRES = [
-  'All','Entertainment','Movies','Sports','News','Kids',
+  'All','Entertainment','Movies', 'Infotainment' , 'Sports','News','Kids',
   'Lifestyle','Music','Devotional','Business News','Comedy',
 ];
 

@@ -13,6 +13,7 @@ import com.facebook.react.defaults.DefaultReactNativeHost
 
 import com.iptv.RootDetectionPackage
 import com.iptv.sslpinning.SslPinningPackage
+import com.iptv.apkinstaller.ApkInstallerPackage // adjust to your package
 
 class MainApplication : Application(), ReactApplication {
 
@@ -27,6 +28,7 @@ class MainApplication : Application(), ReactApplication {
                     add(RootDetectionPackage())
                     add(SslPinningPackage())
                     add(ImmersivePackage()) 
+                    add(ApkInstallerPackage())
                 }
 
             override fun getJSMainModuleName() = "index"
@@ -73,4 +75,5 @@ class MainApplication : Application(), ReactApplication {
 
     loadReactNative(this)
 }
+
 }

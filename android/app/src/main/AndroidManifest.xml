@@ -10,6 +10,11 @@
  <!-- Required for MITM app package scanning on Android 11+ -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="QueryAllPackagesPermission" />
+
+    <!-- Lets the app request/hold the "install unknown apps" permission,
+         needed for the APK self-update flow (ApkInstallerModule.kt) -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
     <!-- Android TV / Google TV -->
     <uses-feature
         android:name="android.software.leanback"
@@ -52,6 +57,16 @@ android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|ui
             </intent-filter>
 
         </activity>
+
+        <!-- Handles PackageInstaller session results for APK self-update:
+             shows the OS confirmation screen if needed, relaunches the app
+             on success. Adjust the path below if you placed
+             ApkInstallReceiver.kt somewhere other than
+             <your-package>/apkinstaller/ -->
+        <receiver
+            android:name=".apkinstaller.ApkInstallReceiver"
+            android:exported="false" />
+
     </application>
 
 </manifest>

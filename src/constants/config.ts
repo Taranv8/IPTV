@@ -58,3 +58,11 @@ export const _RC_DEFAULTS = {
   error_messages: JSON.stringify(ERROR_MESSAGES),
   error_reporting: JSON.stringify(ERROR_REPORTING),
 };
+export const AD_CONFIG = {
+  adsEnabled: true,
+  playOnChannelChange: true,
+  minMinutesBetweenAds: 8,
+  maxAdsPerSession: 20,
+  channelSettleDelayMs: 1500,
+  vastTagUrl: 'https://bid.onclckstr.com/vast?spot_id=6122362',
+};

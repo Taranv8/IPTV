@@ -1,53 +1,85 @@
-// src/services/ads/AdService.ts
+// services/ads/AdService.ts
 //
-// Ad-break FREQUENCY controller only.
+// Ad-break FREQUENCY + ELIGIBILITY controller.
 //
 // VAST/VMAP parsing, media-file selection, and tracking-pixel firing are
-// GONE from this file. react-native-video's built-in Google IMA integration
-// (ExoPlayer's IMA extension on Android, the native IMA SDK on iOS) now owns
-// all of that — it fetches the tag, resolves wrapper chains, fires
-// impression/quartile/error pixels, and renders its own ad UI.
+// handled entirely by react-native-video's built-in Google IMA integration
+// (ExoPlayer's IMA extension on Android, the native IMA SDK on iOS).
 //
-// This file's only remaining job is deciding WHEN an ad break is allowed to
-// start. VideoPlayer.tsx is responsible for actually attaching the VAST tag
-// to the <Video> element (see the `adTagUrl` state there).
+// This file's job is deciding WHEN an ad is allowed to play and WHICH tag
+// to request. Every knob here is remote-configurable — see
+// remoteConfigService.ts, which calls AdService.configure() after every
+// Firebase Remote Config fetch. Nothing in this file is a build-time
+// constant; a config push can flip ads off entirely, change the tag URL,
+// or retune frequency without an app release.
 //
-// ── Known risk when migrating from the old XML-parsing implementation ──────
-// The old `fetchXml()` sent a custom Referer (`https://<spot_id>.bid.onclckstr.com`)
-// and a custom User-Agent when requesting this tag. IMA's native fetch of the
-// ad tag URL does NOT expose a way to set custom headers from JS. If
-// bid.onclckstr.com's fill rate depends on that Referer (common for
-// RTB/bidstream exchanges), you may see meaningfully worse fill after
-// switching — verify with real device traffic before deleting the old
-// XML-parsing code path for good.
-
-export const VAST_AD_TAG_URL = 'https://bid.onclckstr.com/vast?spot_id=6122362';
+// ── Ad policy (why these knobs exist) ───────────────────────────────────────
+//
+// Ads only ever fire on a channel change — there is no periodic mid-roll
+// timer anymore. Two things keep this from feeling like the worst version
+// of YouTube's ad experience:
+//
+//   1. adsEnabled — a hard remote kill switch. Flip to false and every ad
+//      surface goes dark on the next config fetch, no app release needed
+//      (useful for an ad-partner outage, or a fill-rate collapse that makes
+//      showing ads not worth the UX cost).
+//
+//   2. minMinutesBetweenAds / maxAdsPerSession — classic frequency capping:
+//      nobody sees back-to-back ads just because they changed channels
+//      twice in a row.
+//
+// VideoPlayer.tsx additionally waits for the viewer to SETTLE on a channel
+// (channelSettleDelayMs of stable playback) before ever requesting an ad —
+// see the `pendingSettleCheckRef` gate there. That's what makes rapid
+// channel-surfing completely ad-free: the ad opportunity only exists once
+// someone has actually stopped to watch something. It also means a
+// mid-stream error recovery (hard restart) never accidentally counts as
+// "a channel switch" and sneaks in a bonus ad.
 
 export interface AdFrequencyConfig {
-  minMinutesBetweenAds: number;
-  midRollIntervalMinutes: number;
+  /** Remote kill switch. False = no ad is ever requested, anywhere. */
+  adsEnabled: boolean;
+  /** Whether channel changes are eligible to carry an ad at all. */
   playOnChannelChange: boolean;
+  /** Minimum spacing (minutes) between the end of one ad and the start of the next. */
+  minMinutesBetweenAds: number;
+  /** Hard cap on ads per app session. 0 = unlimited. */
   maxAdsPerSession: number;
+  /**
+   * How long (ms) a viewer must stay on a channel, with content actually
+   * playing, before an ad is allowed to interrupt it. This is what makes
+   * channel-surfing ad-free — only someone who stops and watches can ever
+   * see one. Setting this to 0 turns the guard off (ad becomes a strict
+   * pre-roll attached before the very first frame of every channel change —
+   * not recommended; see the comment in VideoPlayer.tsx).
+   */
+  channelSettleDelayMs: number;
+  /** VAST tag URL, swappable without an app release. */
+  vastTagUrl: string;
 }
 
 const DEFAULT_FREQUENCY: AdFrequencyConfig = {
-  minMinutesBetweenAds: 8,
-  midRollIntervalMinutes: 12,
+  adsEnabled: true,
   playOnChannelChange: true,
+  minMinutesBetweenAds: 8,
   maxAdsPerSession: 20,
+  channelSettleDelayMs: 1500,
+  vastTagUrl: 'https://bid.onclckstr.com/vast?spot_id=6122362',
 };
 
 class AdServiceImpl {
   private config: AdFrequencyConfig = { ...DEFAULT_FREQUENCY };
 
-  // BUG FIX: this used to be `Date.now()`, which starts the "cooldown" the
-  // instant the app launches — for an ad that never played. That silently
-  // blocked the very first pre-roll for `minMinutesBetweenAds` minutes after
-  // every cold start. Starting at 0 (epoch) means "no ad has ever played",
-  // so the very first cooldown check always passes.
+  // Starts at "never" (epoch), not Date.now() — otherwise the very first
+  // cooldown check after a cold start fails for an ad that hasn't played
+  // yet, silently blocking the first eligible ad for minMinutesBetweenAds.
   private lastAdAt = 0;
   private adsShownThisSession = 0;
 
+  /** Called by remoteConfigService.ts after every RC fetch. Partial merge —
+   *  only keys present in the remote payload are overwritten, so a
+   *  malformed/partial RC value never resets the rest of the config back
+   *  to defaults. */
   configure(partial: Partial<AdFrequencyConfig>) {
     console.log('[AdService] configure:', partial);
     this.config = { ...this.config, ...partial };
@@ -55,6 +87,14 @@ class AdServiceImpl {
 
   getConfig(): AdFrequencyConfig {
     return { ...this.config };
+  }
+
+  get vastTagUrl(): string {
+    return this.config.vastTagUrl;
+  }
+
+  get channelSettleDelayMs(): number {
+    return this.config.channelSettleDelayMs;
   }
 
   private cooldownElapsed(): boolean {
@@ -78,9 +118,18 @@ class AdServiceImpl {
     return result;
   }
 
-  /** Should a pre-roll play the moment a channel change happens? */
+  /** Should an ad be allowed to interrupt the channel the viewer just
+   *  settled on? Called from VideoPlayer.tsx only after channelSettleDelayMs
+   *  of stable playback on a genuine channel change — never on the switch
+   *  itself, and never on an error-recovery reconnect. */
   shouldPlayOnChannelChange(): boolean {
     console.log('[AdService] shouldPlayOnChannelChange() checking…');
+
+    if (!this.config.adsEnabled) {
+      console.log('[AdService] → false (adsEnabled=false — remote kill switch is on)');
+      return false;
+    }
+
     const cooldownOk = this.cooldownElapsed();
     const capOk       = this.underSessionCap();
     const result = this.config.playOnChannelChange && cooldownOk && capOk;
@@ -89,20 +138,6 @@ class AdServiceImpl {
       ` (playOnChannelChange=${this.config.playOnChannelChange}, cooldownOk=${cooldownOk}, capOk=${capOk})`,
     );
     return result;
-  }
-
-  /** Should the mid-roll timer be allowed to fire an ad break right now? */
-  canPlayMidRoll(): boolean {
-    console.log('[AdService] canPlayMidRoll() checking…');
-    const cooldownOk = this.cooldownElapsed();
-    const capOk       = this.underSessionCap();
-    const result = cooldownOk && capOk;
-    console.log(`[AdService] → canPlayMidRoll = ${result} (cooldownOk=${cooldownOk}, capOk=${capOk})`);
-    return result;
-  }
-
-  midRollIntervalMs(): number {
-    return this.config.midRollIntervalMinutes * 60_000;
   }
 
   /** Call this once IMA signals the ad break has ended (or errored out). */

@@ -1,3 +1,4 @@
+//  src/screens/splash/SplashScreen.tsx
 import React, { useEffect, useRef } from 'react';
 import {
   View,

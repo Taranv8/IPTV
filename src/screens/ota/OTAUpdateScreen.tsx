@@ -1,3 +1,4 @@
+//  src/screens/ota/OTAUpdateScreen.tsx
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
@@ -8,10 +9,14 @@ import {
   Easing,
   Dimensions,
   Platform,
+  AppState,
+  AppStateStatus,
+  BackHandler,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../types/navigation';
 import { consumePendingOTA, OTAProgressEvent, OTAUpdateReady } from '../../services/OTAUpdateService';
+import ApkInstaller from '../../native/ApkInstaller';
 
 const { width: SW } = Dimensions.get('screen');
 
@@ -25,11 +30,40 @@ const FF = Platform.OS === 'android'
   ? { bold: 'sans-serif-medium', regular: 'sans-serif', mono: 'monospace' }
   : { bold: 'AvenirNext-DemiBold', regular: 'AvenirNext-Regular', mono: 'Courier New' };
 
-type ScreenState = 'idle' | 'downloading' | 'done' | 'error';
+type ScreenState = 'idle' | 'permission' | 'downloading' | 'installing' | 'done' | 'error';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'OTAUpdate'>;
 };
+
+// Waits for the user to come back from the "allow install from this source"
+// settings screen, re-checking the permission each time the app resumes.
+// Resolves false after `timeoutMs` if the user never grants it / never returns.
+function waitForInstallPermission(timeoutMs = 120000): Promise<boolean> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (val: boolean) => {
+      if (settled) return;
+      settled = true;
+      sub.remove();
+      clearTimeout(timer);
+      resolve(val);
+    };
+
+    const onChange = async (state: AppStateStatus) => {
+      if (state !== 'active') return;
+      try {
+        const granted = await ApkInstaller.canRequestPackageInstalls();
+        if (granted) finish(true);
+      } catch {
+        // ignore — will retry on next resume or hit the timeout
+      }
+    };
+
+    const sub = AppState.addEventListener('change', onChange);
+    const timer = setTimeout(() => finish(false), timeoutMs);
+  });
+}
 
 // ─── Glow Ring ────────────────────────────────────────────────────────────────
 
@@ -61,12 +95,16 @@ const OTAUpdateScreen: React.FC<Props> = ({ navigation }) => {
     otaRef.current = r?.updateAvailable ? r : null;
   }
 
+  const ota = otaRef.current as OTAUpdateReady | null;
+  const forceUpdate = ota?.forceUpdate === true;
+  const isApk = ota?.updateType === 'apk';
+
   const [screenState, setScreenState] = useState<ScreenState>('idle');
   const [progress,    setProgress]    = useState(0);
   const [downloaded,  setDownloaded]  = useState(0);
-const [totalSize, setTotalSize] = useState(
-  (otaRef.current as OTAUpdateReady | null)?.bundleSize ?? 0
-);
+  const [totalSize, setTotalSize] = useState(
+    ota ? (ota.updateType === 'apk' ? ota.apkSize : ota.bundleSize) : 0
+  );
   const [errorMsg, setErrorMsg] = useState('');
 
   const progressAnim = useRef(new Animated.Value(0)).current;
@@ -77,6 +115,13 @@ const [totalSize, setTotalSize] = useState(
   const r1O          = useRef(new Animated.Value(0.8)).current;
   const r2S          = useRef(new Animated.Value(0.3)).current;
   const r2O          = useRef(new Animated.Value(0.8)).current;
+
+  // ── Block back button / gesture while a forced update is in progress ──────
+  useEffect(() => {
+    if (!forceUpdate) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => true);
+    return () => sub.remove();
+  }, [forceUpdate]);
 
   // ── Entrance + ring animations ────────────────────────────────────────────
   useEffect(() => {
@@ -140,30 +185,60 @@ const [totalSize, setTotalSize] = useState(
   }, [doneScale]);
 
   const handleSkip = useCallback(() => {
+    if (forceUpdate) return; // guarded in UI too, but belt-and-suspenders
     navigation.reset({ index: 0, routes: [{ name: 'Selection' }] });
-  }, [navigation]);
+  }, [navigation, forceUpdate]);
 
   const startUpdate = useCallback(async () => {
-    const ota = otaRef.current;
-    if (!ota || ota === 'uninitialised') return;
+    const currentOta = otaRef.current as OTAUpdateReady | null;
+    if (!currentOta) return;
+
+    setErrorMsg('');
+
+    // ── APK installs need the "unknown sources" permission up front ──
+    if (currentOta.updateType === 'apk') {
+      try {
+        const allowed = await ApkInstaller.canRequestPackageInstalls();
+        if (!allowed) {
+          setScreenState('permission');
+          await ApkInstaller.openUnknownSourcesSettings();
+          const granted = await waitForInstallPermission();
+          if (!granted) {
+            setErrorMsg('Permission to install updates wasn\u2019t granted. You can try again.');
+            setScreenState('error');
+            return;
+          }
+        }
+      } catch (err: any) {
+        setErrorMsg(err?.message ?? 'Could not verify install permission.');
+        setScreenState('error');
+        return;
+      }
+    }
 
     setScreenState('downloading');
     setProgress(0);
     setDownloaded(0);
-    setErrorMsg('');
 
     try {
-      await ota.applyUpdate((event: OTAProgressEvent) => {
+      await currentOta.applyUpdate((event: OTAProgressEvent) => {
         setProgress(event.percent);
         setDownloaded(event.bytesWritten);
         if (event.contentLength > 0) setTotalSize(event.contentLength);
+
         if (event.percent >= 100) {
-          setScreenState('done');
-          playDoneAnimation();
+          if (currentOta.updateType === 'apk') {
+            // Handoff to PackageInstaller / the OS install screen happens
+            // natively from here — see android/ApkInstallReceiver.kt.
+            setScreenState('installing');
+          } else {
+            setScreenState('done');
+            playDoneAnimation();
+          }
         }
       });
     } catch (err: any) {
-      setErrorMsg(err?.message ?? 'Download failed. Check your connection.');
+      setErrorMsg(err?.message ?? 'Update failed. Check your connection.');
       setScreenState('error');
     }
   }, [playDoneAnimation]);
@@ -176,9 +251,7 @@ const [totalSize, setTotalSize] = useState(
     inputRange: [0, 1], outputRange: ['0%', '97%'],
   });
 
-
-const ota = otaRef.current as OTAUpdateReady | null;
-if (!ota) return null;
+  if (!ota) return null;
 
   const { version } = ota;
 
@@ -199,6 +272,8 @@ if (!ota) return null;
               <Animated.Text style={[styles.iconText, { transform: [{ scale: doneScale }] }]}>✓</Animated.Text>
             ) : screenState === 'error' ? (
               <Text style={styles.iconText}>!</Text>
+            ) : screenState === 'permission' ? (
+              <Text style={styles.iconText}>⚙</Text>
             ) : (
               <Text style={styles.iconText}>⬆</Text>
             )}
@@ -209,7 +284,11 @@ if (!ota) return null;
         {screenState === 'idle' && (
           <View style={styles.section}>
             <Text style={styles.title}>Update Available</Text>
-            <Text style={styles.subtitle}>Version {version} is ready to install</Text>
+            <Text style={styles.subtitle}>
+              {isApk
+                ? `Version ${version} includes app changes and requires a full install`
+                : `Version ${version} is ready to install`}
+            </Text>
             <View style={styles.metaRow}>
               <View style={styles.badge}>
                 <Text style={styles.badgeLabel}>SIZE</Text>
@@ -223,7 +302,32 @@ if (!ota) return null;
             <TouchableOpacity style={styles.primaryBtn} onPress={startUpdate} activeOpacity={0.8}>
               <Text style={styles.primaryBtnText}>Install Update</Text>
             </TouchableOpacity>
-            <Text style={styles.hint}>Keeps your app current · Takes ~10 seconds</Text>
+            <Text style={styles.hint}>
+              {isApk
+                ? 'Keeps your app current · You may see a system install screen'
+                : 'Keeps your app current · Takes ~10 seconds'}
+            </Text>
+            {!forceUpdate && (
+              <TouchableOpacity style={styles.skipBtn} onPress={handleSkip} activeOpacity={0.7}>
+                <Text style={styles.skipText}>Skip for now</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+
+        {/* ── Waiting on "install unknown apps" permission ── */}
+        {screenState === 'permission' && (
+          <View style={styles.section}>
+            <Text style={styles.title}>Permission Needed</Text>
+            <Text style={styles.subtitle}>
+              Allow installs from this app in the settings screen, then come back here.
+              We'll continue automatically.
+            </Text>
+            <View style={styles.restartingRow}>
+              <View style={styles.dotActive} />
+              <View style={styles.dotMid} />
+              <View style={styles.dotDim} />
+            </View>
           </View>
         )}
 
@@ -247,7 +351,23 @@ if (!ota) return null;
           </View>
         )}
 
-        {/* ── Done ── */}
+        {/* ── Installing (APK only) ── */}
+        {screenState === 'installing' && (
+          <View style={styles.section}>
+            <Text style={styles.title}>Installing…</Text>
+            <Text style={styles.subtitle}>
+              If a system install screen appears, follow its prompts. The app
+              will restart automatically once installation finishes.
+            </Text>
+            <View style={styles.restartingRow}>
+              <View style={styles.dotActive} />
+              <View style={styles.dotMid} />
+              <View style={styles.dotDim} />
+            </View>
+          </View>
+        )}
+
+        {/* ── Done (bundle only) ── */}
         {screenState === 'done' && (
           <View style={styles.section}>
             <Text style={styles.title}>Update Applied!</Text>
@@ -268,9 +388,11 @@ if (!ota) return null;
             <TouchableOpacity style={styles.primaryBtn} onPress={startUpdate} activeOpacity={0.8}>
               <Text style={styles.primaryBtnText}>Retry</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.skipBtn} onPress={handleSkip} activeOpacity={0.7}>
-              <Text style={styles.skipText}>Skip for now</Text>
-            </TouchableOpacity>
+            {!forceUpdate && (
+              <TouchableOpacity style={styles.skipBtn} onPress={handleSkip} activeOpacity={0.7}>
+                <Text style={styles.skipText}>Skip for now</Text>
+              </TouchableOpacity>
+            )}
           </View>
         )}
 
