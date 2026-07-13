@@ -1,6 +1,4 @@
 package com.iptv.apkinstaller
-// TODO: replace "com.rubytv" above with your app's actual applicationId / package,
-// and move this file to android/app/src/main/java/<your/package/path>/apkinstaller/
 
 import android.app.PendingIntent
 import android.content.Intent
@@ -8,24 +6,27 @@ import android.content.pm.PackageInstaller
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
+import com.facebook.react.bridge.WritableMap
+import com.facebook.react.modules.core.DeviceEventManagerModule
+import java.io.BufferedInputStream
 import java.io.File
 import java.io.FileInputStream
+import java.io.FileOutputStream
+import java.net.HttpURLConnection
+import java.net.URL
 
 class ApkInstallerModule(reactContext: ReactApplicationContext) :
     ReactContextBaseJavaModule(reactContext) {
 
     override fun getName() = "ApkInstaller"
 
-    /**
-     * Whether this app currently has permission to install packages from
-     * outside the Play Store ("install unknown apps" / "unknown sources").
-     * On API < 26 this permission doesn't exist per-app (it was a single
-     * global toggle), so we report true and let the OS handle it.
-     */
+    // ── Permission check / settings redirect / versionCode — unchanged ──────
+
     @ReactMethod
     fun canRequestPackageInstalls(promise: Promise) {
         try {
@@ -41,11 +42,6 @@ class ApkInstallerModule(reactContext: ReactApplicationContext) :
         }
     }
 
-    /**
-     * Opens the OS settings screen where the user flips "Allow from this
-     * source" on for this app. There is no way to grant this permission
-     * programmatically — Android requires the user to do it manually here.
-     */
     @ReactMethod
     fun openUnknownSourcesSettings(promise: Promise) {
         try {
@@ -65,11 +61,6 @@ class ApkInstallerModule(reactContext: ReactApplicationContext) :
         }
     }
 
-    /**
-     * Returns the versionCode (API < 28) / longVersionCode (API >= 28) of
-     * the currently-installed build, as a string (avoids float-precision
-     * issues crossing the JS bridge).
-     */
     @ReactMethod
     fun getInstalledVersionCode(promise: Promise) {
         try {
@@ -87,18 +78,84 @@ class ApkInstallerModule(reactContext: ReactApplicationContext) :
         }
     }
 
-    /**
-     * Streams the given APK file into a new PackageInstaller session and
-     * commits it. This resolves once the session is committed — NOT once
-     * the install actually finishes. Final success/failure (and, on
-     * success, relaunching the app) is handled by ApkInstallReceiver.
-     *
-     * IMPORTANT: On most consumer devices, Android will still show its own
-     * install-confirmation screen at this point — that's an OS security
-     * boundary this module cannot bypass for a normal app. See the notes
-     * in src/native/ApkInstaller.ts and android/README.md for what would
-     * be needed for a fully silent install (Device Owner / system app).
-     */
+    // ── APK download — NEW: replaces RNFS.downloadFile for this flow ────────
+    //
+    // Plain HttpURLConnection, no react-native-fs involved anywhere in this
+    // path. Every failure path below rejects with an explicit, non-null
+    // string code — the exact thing react-native-fs's Downloader.java gets
+    // wrong (it can call promise.reject(null, ...), which crashes the app
+    // on newer RN's Kotlin bridge instead of just failing the promise).
+    //
+    // Progress is streamed to JS as "ApkDownloadProgress" events rather than
+    // returned via the (single-shot) promise. Subscribe on the JS side with
+    // a NativeEventEmitter — see ApkInstaller.ts.
+    @ReactMethod
+    fun downloadApk(urlString: String, destPath: String, promise: Promise) {
+        Thread {
+            var connection: HttpURLConnection? = null
+            try {
+                val url = URL(urlString)
+                connection = (url.openConnection() as HttpURLConnection).apply {
+                    connectTimeout = 15000
+                    readTimeout = 15000
+                    instanceFollowRedirects = true // handles 301/302/307/308 automatically
+                }
+                connection.connect()
+
+                val status = connection.responseCode
+                if (status < 200 || status >= 300) {
+                    promise.reject("ERR_HTTP_STATUS", "APK download failed — HTTP $status")
+                    return@Thread
+                }
+
+                val contentLength = connection.contentLengthLong // -1 if server omits it
+                val destFile = File(destPath)
+                destFile.parentFile?.mkdirs()
+                if (destFile.exists()) destFile.delete()
+
+                var bytesWritten = 0L
+                var lastEmit = 0L
+
+                BufferedInputStream(connection.inputStream, 8 * 1024).use { input ->
+                    FileOutputStream(destFile).use { output ->
+                        val buffer = ByteArray(8 * 1024)
+                        var read: Int
+                        while (input.read(buffer).also { read = it } != -1) {
+                            output.write(buffer, 0, read)
+                            bytesWritten += read
+                            val now = System.currentTimeMillis()
+                            if (now - lastEmit > 200) {
+                                lastEmit = now
+                                emitProgress(bytesWritten, contentLength)
+                            }
+                        }
+                        output.flush()
+                    }
+                }
+                emitProgress(bytesWritten, contentLength) // guarantee a final 100% event
+
+                promise.resolve(null)
+            } catch (e: Exception) {
+                // Always a real string code — this is the whole point of
+                // rewriting this instead of relying on react-native-fs.
+                promise.reject("ERR_DOWNLOAD", e.message ?: "APK download failed")
+            } finally {
+                connection?.disconnect()
+            }
+        }.start()
+    }
+
+    private fun emitProgress(bytesWritten: Long, contentLength: Long) {
+        val params: WritableMap = Arguments.createMap().apply {
+            putDouble("bytesWritten", bytesWritten.toDouble())
+            putDouble("contentLength", contentLength.toDouble())
+        }
+        reactApplicationContext
+            .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+            .emit("ApkDownloadProgress", params)
+    }
+
+    // ── APK install — unchanged from before ──────────────────────────────
     @ReactMethod
     fun installApk(filePath: String, promise: Promise) {
         try {
@@ -113,9 +170,6 @@ class ApkInstallerModule(reactContext: ReactApplicationContext) :
             val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                // Only actually skips the confirmation UI when this app was
-                // the installer of record for the currently-running version
-                // and the OEM/API level supports it. Safe to set regardless.
                 params.setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED)
             }
 

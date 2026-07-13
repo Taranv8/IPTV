@@ -11,7 +11,7 @@ import android.util.Log
 class ApkInstallReceiver : BroadcastReceiver() {
 
     companion object {
-        const val ACTION_INSTALL_COMPLETE = "com.rubytv.apkinstaller.INSTALL_COMPLETE"
+        const val ACTION_INSTALL_COMPLETE = "com.iptv.apkinstaller.INSTALL_COMPLETE"
         private const val TAG = "ApkInstaller"
     }
 

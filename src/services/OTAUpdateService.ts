@@ -4,7 +4,7 @@ import RNFS from 'react-native-fs';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import RNRestart from 'react-native-restart';
 import firestore from '@react-native-firebase/firestore';
-import ApkInstaller from '../native/ApkInstaller';
+import ApkInstaller, { subscribeToApkDownloadProgress } from '../native/ApkInstaller';
 
 // ─── Constants ────────────────────────────────────────────────────────
 const HASH_KEY         = '@ota/current_hash';
@@ -16,32 +16,7 @@ const APK_FILENAME     = 'update.apk';
 const OTA_APK_PATH     = `${OTA_DIR}/${APK_FILENAME}`;
 
 // ─── Firestore doc shape (ota_updates/{platform}) ──────────────────────
-//
-// Shared / control fields:
-//   enabled:      boolean            — remote kill-switch, unchanged
-//   updateType:   'bundle' | 'apk'   — NEW. Defaults to 'bundle' if absent,
-//                                      so existing docs keep working with no
-//                                      changes. Set to 'apk' whenever you've
-//                                      shipped native-code changes that a JS
-//                                      bundle swap can't cover.
-//   forceUpdate:  boolean            — NEW. Defaults to false if absent.
-//                                      false = user can skip/dismiss the
-//                                      update screen. true = the update
-//                                      screen can't be skipped or backed out
-//                                      of (see OTAUpdateScreen.tsx).
-//
-// Bundle-update fields (used when updateType === 'bundle', same as before):
-//   hash, bundleUrl, version, bundleSize
-//
-// APK-update fields (used when updateType === 'apk'):
-//   apkUrl:          string  — direct download URL for the .apk
-//   apkVersionCode:  number  — must match android { defaultConfig { versionCode } }
-//                              of the release you're pointing to. Compared
-//                              against the versionCode currently installed
-//                              on-device; update is offered only if greater.
-//   apkVersionName:  string  — display string, e.g. "2.4.0" (optional, falls
-//                              back to apkVersionCode if omitted)
-//   apkSize:         number  — bytes, optional, shown in the UI
+// (unchanged — see previous version's comments for the full field list)
 
 // ─── Types ────────────────────────────────────────────────────────────
 export interface OTAProgressEvent {
@@ -67,13 +42,13 @@ interface OTAReadyBase {
 
 export interface OTABundleUpdateReady extends OTAReadyBase {
   updateType: 'bundle';
-  bundleSize: number; // bytes — stored in Firestore, see upload script change below
+  bundleSize: number;
   applyUpdate: (onProgress: OTAProgressCallback) => Promise<void>;
 }
 
 export interface OTAApkUpdateReady extends OTAReadyBase {
   updateType: 'apk';
-  apkSize: number; // bytes
+  apkSize: number;
   applyUpdate: (onProgress: OTAProgressCallback) => Promise<void>;
 }
 
@@ -81,7 +56,7 @@ export type OTAUpdateReady = OTABundleUpdateReady | OTAApkUpdateReady;
 
 export type OTAResult = OTANoUpdate | OTAUpdateReady;
 
-// ─── Module-level store (avoids serialising functions through nav params) ──
+// ─── Module-level store ─────────────────────────────────────────────────
 let _pendingResult: OTAResult | null = null;
 
 export function storePendingOTA(result: OTAResult): void {
@@ -96,12 +71,8 @@ export function consumePendingOTA(): OTAResult | null {
 
 // ─────────────────────────────────────────────────────────────────────
 //  checkForOTAUpdate()
-//  Call during the Splash screen. Returns a status object.
-//  Does NOT download anything — just compares hashes / version codes.
 // ─────────────────────────────────────────────────────────────────────
 export async function checkForOTAUpdate(): Promise<OTAResult> {
-  // Skip entirely in dev — Metro bundler handles updates, and there's no
-  // native release build to self-update against anyway.
   if (__DEV__) {
     return { updateAvailable: false };
   }
@@ -126,7 +97,6 @@ export async function checkForOTAUpdate(): Promise<OTAResult> {
 
     const cfg = doc.data()!;
 
-    // Remote kill-switch
     if (!cfg.enabled) {
       return { updateAvailable: false };
     }
@@ -146,7 +116,7 @@ export async function checkForOTAUpdate(): Promise<OTAResult> {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-//  Bundle update check (unchanged logic, factored out)
+//  Bundle update check — unchanged
 // ─────────────────────────────────────────────────────────────────────
 async function _checkBundleUpdate(
   cfg: Record<string, any>,
@@ -178,7 +148,7 @@ async function _checkBundleUpdate(
 }
 
 // ─────────────────────────────────────────────────────────────────────
-//  APK update check (NEW)
+//  APK update check — unchanged
 // ─────────────────────────────────────────────────────────────────────
 async function _checkApkUpdate(
   cfg: Record<string, any>,
@@ -218,7 +188,11 @@ async function _checkApkUpdate(
 }
 
 // ─────────────────────────────────────────────────────────────────────
-//  _downloadAndApplyBundle()  — internal, called via applyUpdate()
+//  _downloadAndApplyBundle() — unchanged, still uses RNFS.downloadFile.
+//  (Same underlying react-native-fs bug technically still applies here —
+//  see android/README notes if you want to carry the native-download fix
+//  over to the bundle path too. Left as-is for now since that's not what
+//  crashed.)
 // ─────────────────────────────────────────────────────────────────────
 async function _downloadAndApplyBundle(
   bundleUrl: string,
@@ -226,7 +200,6 @@ async function _downloadAndApplyBundle(
   onProgress: OTAProgressCallback,
 ): Promise<void> {
 
-  // Make sure the OTA directory exists
   const dirExists = await RNFS.exists(OTA_DIR);
   if (!dirExists) {
     await RNFS.mkdir(OTA_DIR);
@@ -256,13 +229,11 @@ async function _downloadAndApplyBundle(
     throw new Error(`Download failed — HTTP ${statusCode}`);
   }
 
-  // Atomic swap: delete old → rename temp → new
   if (await RNFS.exists(OTA_BUNDLE_PATH)) {
     await RNFS.unlink(OTA_BUNDLE_PATH);
   }
   await RNFS.moveFile(tempPath, OTA_BUNDLE_PATH);
 
-  // Persist the new hash before restart
   await AsyncStorage.setItem(HASH_KEY, newHash);
 
   console.log('[OTA] Bundle saved. Restarting in 400 ms…');
@@ -270,12 +241,13 @@ async function _downloadAndApplyBundle(
 }
 
 // ─────────────────────────────────────────────────────────────────────
-//  _downloadAndApplyApk()  — internal, called via applyUpdate()  (NEW)
+//  _downloadAndApplyApk()  — UPDATED
 //
-//  Assumes the caller (OTAUpdateScreen) has already made sure the
-//  "install unknown apps" permission is granted — see waitForInstallPermission
-//  in OTAUpdateScreen.tsx — but re-checks defensively since this function
-//  can also be called directly by other callers.
+//  No longer touches RNFS at all. Download goes through the native
+//  ApkInstaller.downloadApk() (plain HttpURLConnection, written in our own
+//  Kotlin code — see android/ApkInstallerModule.kt), which always rejects
+//  with a real string error code, so a failed download now correctly
+//  surfaces as a rejected promise instead of crashing the app.
 // ─────────────────────────────────────────────────────────────────────
 async function _downloadAndApplyApk(
   apkUrl: string,
@@ -289,47 +261,28 @@ async function _downloadAndApplyApk(
     );
   }
 
-  const dirExists = await RNFS.exists(OTA_DIR);
-  if (!dirExists) {
-    await RNFS.mkdir(OTA_DIR);
-  }
-
-  if (await RNFS.exists(OTA_APK_PATH)) {
-    await RNFS.unlink(OTA_APK_PATH);
-  }
-
-  const download = RNFS.downloadFile({
-    fromUrl: apkUrl,
-    toFile: OTA_APK_PATH,
-    progressInterval: 250,
-    progress: ({ bytesWritten, contentLength }) => {
-      if (contentLength > 0) {
-        onProgress({
-          percent: Math.round((bytesWritten / contentLength) * 100),
-          bytesWritten,
-          contentLength,
-        });
-      }
-    },
+  const sub = subscribeToApkDownloadProgress(({ bytesWritten, contentLength }) => {
+    if (contentLength > 0) {
+      onProgress({
+        percent: Math.round((bytesWritten / contentLength) * 100),
+        bytesWritten,
+        contentLength,
+      });
+    }
   });
 
-  const { statusCode } = await download.promise;
-
-  if (statusCode !== 200) {
-    if (await RNFS.exists(OTA_APK_PATH)) await RNFS.unlink(OTA_APK_PATH);
-    throw new Error(`APK download failed — HTTP ${statusCode}`);
+  try {
+    await ApkInstaller.downloadApk(apkUrl, OTA_APK_PATH);
+  } finally {
+    sub.remove();
   }
 
   console.log('[OTA] APK downloaded. Handing off to PackageInstaller…');
-  // This resolves once the install *session* is committed — the actual
-  // install + auto-relaunch happens afterwards via ApkInstallReceiver on
-  // the native side (see android/ApkInstallReceiver.kt), possibly after
-  // the OS shows its own confirmation screen.
   await ApkInstaller.installApk(OTA_APK_PATH);
 }
 
 // ─────────────────────────────────────────────────────────────────────
-//  clearOTABundle() — emergency recovery / developer menu
+//  clearOTABundle() — unchanged
 // ─────────────────────────────────────────────────────────────────────
 export async function clearOTABundle(): Promise<void> {
   try {
