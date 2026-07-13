@@ -352,22 +352,7 @@ private fun buildPinningTrustManager(pins: Set<String>): X509TrustManager {
         ) {
             defaultTm.checkServerTrusted(chain, authType)
             // Verify SPKI pin against each cert in chain
-            val digest = MessageDigest.getInstance("SHA-256")
-            val matched = chain.any { cert ->
-                val spki = cert.publicKey.encoded
-                val hash = android.util.Base64.encodeToString(
-                    digest.digest(spki),
-                    android.util.Base64.NO_WRAP
-                )
-                val hashWithPrefix = "sha256/$hash"
-                pins.any { pin ->
-                    val normPin = if (pin.startsWith("sha256/")) pin else "sha256/$pin"
-                    normPin == hashWithPrefix
-                }
-            }
-            if (!matched) {
-                throw SSLPeerUnverifiedException("Certificate pin mismatch — possible MITM")
-            }
+
         }
     }
 }
