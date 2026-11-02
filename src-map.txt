@@ -1,8 +1,4 @@
 src
-├── assets
-│   ├── animations
-│   ├── fonts
-│   └── images
 ├── components
 │   ├── channel
 │   │   ├── CategorySelector.tsx
@@ -40,6 +36,8 @@ src
 │   ├── useOrientation.ts
 │   ├── usePlayer.ts
 │   └── useSettings.ts
+├── native
+│   └── ApkInstaller.ts
 ├── navigation
 │   ├── AppNavigator.tsx
 │   └── RootNavigator.tsx
@@ -57,9 +55,13 @@ src
 │   └── splash
 │       └── SplashScreen.tsx
 ├── services
+│   ├── ads
+│   │   ├── AdPrefetchService.ts
+│   │   └── AdService.ts
 │   ├── api
 │   │   ├── apiClient.ts
-│   │   └── channelApi.ts
+│   │   ├── channelApi.ts
+│   │   └── channelSocketClient.ts
 │   ├── epgService.ts
 │   ├── error
 │   │   ├── CrashHandler.ts

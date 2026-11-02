@@ -328,16 +328,7 @@ drm = { type: streamEntry.licenseType, licenseServer: lk };
         return { url, type: knownType, userAgent, httpHeaders, drm };
       }
 
-      console.log(`[StreamResolver] Known ${knownType}, checking redirect:`, url);
-      try {
-        const headResult = await StreamResolver._head(url, userAgent, httpHeaders);
-        if (headResult && headResult.url !== url) {
-          console.log(`[StreamResolver] ✅ Redirect → ${headResult.type}:`, headResult.url);
-          return { ...headResult, userAgent, httpHeaders, drm };
-        }
-      } catch (e: any) {
-        console.log('[StreamResolver] HEAD failed (non-fatal):', e?.message);
-      }
+          console.log(`[StreamResolver] Known ${knownType} — passing directly:`, url);
       return { url, type: knownType, userAgent, httpHeaders, drm };
     }
 
@@ -367,7 +358,7 @@ drm = { type: streamEntry.licenseType, licenseServer: lk };
   ): Promise<ResolvedStream | null> {
     const res = await axios.head(url, {
       maxRedirects: 10,
-      timeout: 8_000,
+      timeout: 4_000,
       headers: { ...DEFAULT_STREAM_HEADERS, 'User-Agent': userAgent, ...httpHeaders },
       validateStatus: s => s < 500,
     });

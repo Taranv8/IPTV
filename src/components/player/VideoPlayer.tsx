@@ -55,6 +55,36 @@
 // see handleAdEvent below. The live-TV failover machinery (hard-restart,
 // source cycling, stall watchdog, health reporting) is untouched for
 // `mode === 'content'`.
+//
+// ── AD-PREFETCH FIX ─────────────────────────────────────────────────────────
+// Previously, the settle-check timer decided "yes, show an ad" and only
+// THEN set adTagUrl + bumped streamRestartKey — meaning the fresh <Video>
+// mount was the first moment IMA ever touched the VAST tag. The viewer sat
+// through a generic "Buffering…" spinner while IMA did a cold VAST fetch +
+// parse + media-file selection, with zero warning it was coming, right
+// after already waiting for the channel itself to load.
+//
+// Now AdPrefetchService.prefetch() is kicked off in parallel with the
+// settle delay (as soon as the fast eligibility checks — kill switch,
+// session cap, cooldown — say an ad is worth considering), so by the time
+// the settle timer fires we usually already know whether there's a
+// fillable ad. The settle check gates on that result (with a small bounded
+// extra wait if the prefetch hasn't landed yet) and skips the ad entirely
+// — no remount, no spinner — if it's not confirmed ready in time. This
+// can't make IMA's own native ad request literally zero-latency (this
+// library only accepts an adTagUrl, there's no way to hand it a
+// pre-parsed VAST response), but it does mean we never force a remount +
+// spinner cycle for a tag that turns out empty or slow, and the ad
+// server/CDN connection is already warm by the time IMA requests it for
+// real.
+//
+// ── LIVE-EDGE CATCH-UP ON AD END ────────────────────────────────────────────
+// Live content keeps moving forward for the whole duration of an ad break.
+// Previously we only caught up to the live edge reactively, after
+// ExoPlayer threw EXO_BEHIND_LIVE_WINDOW (21002). Now handleAdEvent
+// proactively calls seekToLiveEdge() the instant the ad break ends, so the
+// transition back to content doesn't have to wait for that error to fire
+// and be recovered from.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
@@ -80,12 +110,19 @@ import {
 import { StreamHealthService, HealthMap } from '../../services/stream/StreamHealthService';
 import { VideoErrorBoundary } from './VideoErrorBoundary';
 import AdService from '../../services/ads/AdService';
+import AdPrefetchService from '../../services/ads/AdPrefetchService';
 
 // ─── Timing constants ─────────────────────────────────────────────────────────
 
 const STALL_TIMEOUT_MS     =  20000;
 const RETRY_DELAY_MS       =  2_000;
 const INTER_CYCLE_DELAY_MS =  6_000;
+
+// Bounded extra wait for the ad prefetch at settle-check time, in case it
+// hasn't landed yet even though it was kicked off in parallel with the
+// settle delay. Bounded so a slow/hanging ad server can never make the
+// viewer wait indefinitely — worst case we just skip the ad this switch.
+const AD_PREFETCH_GRACE_MS = 1500;
 
 // ─── Hard-restart config ──────────────────────────────────────────────────────
 const MAX_HARD_RESTARTS = 1;
@@ -109,7 +146,7 @@ const BUFFER_CONFIG = {
  minBufferMs: 10000,
   maxBufferMs: 20000,
   bufferForPlaybackMs: 2500,
-  bufferForPlaybackAfterRebufferMs: 5000,
+  bufferForPlaybackAfterRebufferMs: 3000,
   backBufferDurationMs: 0,
   cacheSizeMb: 100,
 } as const;
@@ -469,6 +506,12 @@ const VideoPlayerInner: React.FC<Props> = ({ channel, fullscreen = false, paused
 
   // ── Content load — extracted so it can run both on channel change AND ────
   // ── right after streamRestartKey bumps for the settle-triggered ad ───────
+  //
+  // FIX: health fetch no longer gates the first resolve() attempt. Health
+  // is only used to pick the BEST first source; the first resolve now
+  // starts immediately against the channel's own source order, and health
+  // is applied in the background as soon as it lands (affecting fallback
+  // ordering only, never blocking the attempt already in flight).
 
   const loadChannel = useCallback(async () => {
     const myGen = ++loadGenRef.current;
@@ -492,24 +535,33 @@ const VideoPlayerInner: React.FC<Props> = ({ channel, fullscreen = false, paused
 
     console.log(`[VideoPlayer] ── "${ch.name}" | ${totalSourcesRef.current} source(s)`);
 
-    const health = await StreamHealthService.fetchHealth(ch.id);
+    // Kick off health in parallel — do NOT await it before resolving.
+    // Previously this was `await`ed here, meaning the first stream resolve
+    // couldn't even start until this network round-trip finished. Now the
+    // first attempt uses the channel's own source order immediately, and
+    // health (when it lands) only reorders sources for later fallback
+    // attempts.
+    const healthPromise = StreamHealthService.fetchHealth(ch.id);
+    healthPromise.then(health => {
+      if (cancelledRef.current || loadGenRef.current !== myGen) return;
+      healthRef.current       = health;
+      const sorted            = StreamHealthService.sort(ch.streamUrls ?? [], health);
+      sortedUrlsRef.current   = sorted;
+      totalSourcesRef.current = sorted.length;
+
+      const deadCount = sorted.filter(e => health[e.url]?.isDead).length;
+      if (deadCount > 0) {
+        console.log(
+          `[VideoPlayer] 💀 ${deadCount}/${sorted.length} sources marked dead — sorted to back`,
+        );
+      }
+    }).catch(e => {
+      console.warn('[VideoPlayer] Health fetch failed (non-blocking):', e?.message ?? e);
+    });
+
     if (cancelledRef.current || loadGenRef.current !== myGen) return;
 
-    healthRef.current       = health;
-    const sorted            = StreamHealthService.sort(ch.streamUrls ?? [], health);
-    sortedUrlsRef.current   = sorted;
-    totalSourcesRef.current = sorted.length;
-
-    const deadCount = sorted.filter(e => health[e.url]?.isDead).length;
-    if (deadCount > 0) {
-      console.log(
-        `[VideoPlayer] 💀 ${deadCount}/${sorted.length} sources marked dead — sorted to back`,
-      );
-    }
-
-    if (cancelledRef.current || loadGenRef.current !== myGen) return;
-
-    const firstEntry = sorted[0] ?? ch.streamUrl;
+    const firstEntry = sortedUrlsRef.current[0] ?? ch.streamUrl;
 
     let resolved: ResolvedStream | null = null;
     try {
@@ -541,17 +593,51 @@ const VideoPlayerInner: React.FC<Props> = ({ channel, fullscreen = false, paused
   // in handleReadyForDisplay). If the viewer is still watching this channel
   // at that point — not mid-flip to another one — and AdService says an ad
   // is due, we attach the tag and force a fresh mount to insert it.
+  //
+  // FIX: an ad is only ever attached once AdPrefetchService confirms the
+  // tag actually has fill. The prefetch is kicked off immediately (in
+  // parallel with the settle delay itself) so it's usually already
+  // resolved by the time we need an answer; if it hasn't landed yet we
+  // wait a small bounded extra window (AD_PREFETCH_GRACE_MS) rather than
+  // blocking indefinitely. If the prefetch never confirms fill in time, we
+  // skip the ad for this channel switch entirely — no remount, no spinner,
+  // no interruption on uncertainty.
   const scheduleSettleAdCheck = useCallback(() => {
     clearSettleTimer();
+
+    // Start warming this now — runs alongside the settle delay below, so
+    // by the time the timer fires we usually already know the answer.
+    if (AdService.shouldPlayOnChannelChange()) {
+      AdPrefetchService.prefetch();
+    }
+
     const delay = AdService.channelSettleDelayMs;
-    settleTimerRef.current = setTimeout(() => {
+    settleTimerRef.current = setTimeout(async () => {
       if (cancelledRef.current || modeRef.current !== 'content') return;
       if (!appActiveRef.current) return;
       if (!hasLoadedOnce.current) return; // still buffering/failing over — don't pile an ad on top
 
       if (!AdService.shouldPlayOnChannelChange()) return;
 
-      console.log('[VideoPlayer] 🅰️ Settled on channel — inserting ad');
+      // Bounded extra wait in case the prefetch is still in flight — bounded
+      // so a slow/hanging ad server can never make the viewer wait
+      // indefinitely; worst case we just skip the ad this switch.
+      const result = await Promise.race([
+        AdPrefetchService.prefetch(),
+        new Promise<null>(resolve => setTimeout(() => resolve(null), AD_PREFETCH_GRACE_MS)),
+      ]);
+
+      // Re-check after the async wait — the viewer may have moved on to a
+      // different channel, or an ad may already be mid-flight, while we
+      // were waiting on the prefetch.
+      if (cancelledRef.current || modeRef.current !== 'content') return;
+
+      if (!result || !result.hasFill) {
+        console.log('[VideoPlayer] 🅰️ Skipping ad — no confirmed fill in time');
+        return;
+      }
+
+      console.log('[VideoPlayer] 🅰️ Settled on channel + ad prefetched — inserting ad');
       setAdTagUrl(AdService.vastTagUrl);
       setStreamRestartKey(k => k + 1); // forces IMA to issue a fresh ad request
     }, delay);
@@ -592,12 +678,21 @@ const VideoPlayerInner: React.FC<Props> = ({ channel, fullscreen = false, paused
       setAdTagUrl(undefined);
       setAdRemaining(0);
       setMode('content');
+
+      // FIX: live content kept moving forward for the whole duration of the
+      // ad break. Proactively snap to the live edge the instant the ad
+      // ends, instead of waiting for ExoPlayer to throw
+      // EXO_BEHIND_LIVE_WINDOW (21002) and recovering reactively — this is
+      // what keeps the transition back to content from feeling like a
+      // second load.
+      requestAnimationFrame(() => seekToLiveEdge());
+
       // Deliberately NOT re-arming the settle check here — ads are one-shot
       // per channel switch. The next opportunity only comes from the next
       // genuine channel change.
       return;
     }
-  }, []);
+  }, [seekToLiveEdge]);
 
   // ── Stall watchdog (content only — IMA manages its own ad timeouts) ──────
 
@@ -856,7 +951,7 @@ const VideoPlayerInner: React.FC<Props> = ({ channel, fullscreen = false, paused
   playInBackground={false}
   playWhenInactive={false}
   ignoreSilentSwitch="ignore"
-  minLoadRetryCount={0}
+  minLoadRetryCount={3}
   automaticallyWaitsToMinimizeStalling={false}
   reportBandwidth={true}
   onLoadStart={handleLoadStart}

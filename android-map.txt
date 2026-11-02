@@ -1833,6 +1833,10 @@ src
 │           ├── java
 │           │   └── com
 │           │       └── iptv
+│           │           ├── apkinstaller
+│           │           │   ├── ApkInstallerModule.kt
+│           │           │   ├── ApkInstallerPackage.kt
+│           │           │   └── ApkInstallReceiver.kt
 │           │           ├── ImmersiveModule.kt
 │           │           ├── ImmersivePackage.kt
 │           │           ├── MainActivity.kt

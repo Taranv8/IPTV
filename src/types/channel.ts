@@ -49,7 +49,7 @@ export interface Channel {
   updatedAt?:  string;
 
   // ── Active stream's DRM / header info ──────────────────────────────────────
-  // Populated from the selected StreamUrl entry so VideoPlayer doesn't need
+  // Populated from the     selected StreamUrl entry so VideoPlayer doesn't need
   // to dig into the array itself.
   licenseType?: 'clearkey' | 'widevine' | 'playready' | null;
   licenseKey?:  string | null;   // "kid_hex:key_hex" for clearkey
